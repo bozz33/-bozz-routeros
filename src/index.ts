@@ -4,6 +4,7 @@ export * from './client/types.js';
 export * from './codec/length.js';
 export * from './codec/sentence.js';
 export * from './errors.js';
+export * from './observability/runtime-monitor.js';
 export * from './protocol/command-state-machine.js';
 export * from './protocol/reply-parser.js';
 export * from './protocol/reply.js';
