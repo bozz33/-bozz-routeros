@@ -1,0 +1,10 @@
+@bozz/routeros
+Copyright 2026 BOZZ contributors
+
+Licensed under the Apache License, Version 2.0.
+
+Upstream research/reference projects currently include:
+- SourceRegistry/mikrotik-client (Apache-2.0)
+- Fibercom/routeros-api (MIT)
+
+This NOTICE does not claim that upstream source code has already been incorporated. If source-derived code is introduced, the applicable copyright and attribution notices must be retained and this file updated accordingly.
