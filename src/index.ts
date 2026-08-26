@@ -6,6 +6,7 @@ export * from './codec/sentence.js';
 export * from './errors.js';
 export * from './observability/runtime-monitor.js';
 export * from './protocol/command-state-machine.js';
+export * from './protocol/query.js';
 export * from './protocol/reply-parser.js';
 export * from './protocol/reply.js';
 export * from './protocol/tag-registry.js';
