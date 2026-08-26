@@ -15,11 +15,16 @@ ACTUAL_NPM="$(npm --version)"
 echo "$EXPECTED_LOCK_SHA256  package-lock.json" | sha256sum -c -
 test -d node_modules
 
+# Defend against host/checkout umask differences before every package build.
+sh certification/container/normalize-package-modes.sh
+
 rm -rf dist .artifacts
 npm run typecheck
 npm test
 npm run test:stress
 npm run build
+test -f dist/index.js
+test -f dist/index.d.ts
 npm pack --dry-run
 
 mkdir -p .artifacts
