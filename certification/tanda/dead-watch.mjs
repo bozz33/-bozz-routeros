@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { routerOSQuery } from '@bozz/routeros';
 import {
   assertCleanDiagnostics,
   attachDiagnostics,
+  collectFor,
   createRouterClient,
   drainClosedStream,
   intEnv,
@@ -21,15 +23,20 @@ const userEvents = newEventCounters();
 try {
   await client.connect();
 
+  // `.dead=yes` replies are only guaranteed to identify the vanished item by
+  // `.id`; they do not have to repeat every prior field such as `user`.
+  const activeIds = new Set(
+    (await client.print('/ip/hotspot/active', {
+      attributes: { '.proplist': '.id,user' },
+      queries: routerOSQuery().equals('user', testUser).toWords(),
+    }))
+      .map((row) => row['.id'])
+      .filter(Boolean),
+  );
+
   const [activeStream, userStream] = await Promise.all([
-    client.listen('/ip/hotspot/active', {
-      attributes: { '.proplist': '.id,user,uptime,session-time-left' },
-      maxQueuedReplies: 256,
-    }),
-    client.listen('/ip/hotspot/user', {
-      attributes: { '.proplist': '.id,name,uptime,limit-uptime,disabled' },
-      maxQueuedReplies: 256,
-    }),
+    client.listen('/ip/hotspot/active', { maxQueuedReplies: 256 }),
+    client.listen('/ip/hotspot/user', { maxQueuedReplies: 256 }),
   ]);
 
   process.stderr.write(
@@ -37,32 +44,33 @@ try {
     `Log that LAB client in/out within ${timeoutMs}ms.\n`,
   );
 
-  const deadPromise = waitForMatchingReply(
+  const userCollector = collectFor(userStream, timeoutMs, userEvents);
+  const deadReply = await waitForMatchingReply(
     activeStream,
     timeoutMs,
-    (reply) =>
-      reply.type === 're' &&
-      reply.attributes.user === testUser &&
-      reply.attributes['.dead'] === 'yes',
+    (reply) => {
+      if (reply.type !== 're') return false;
+      const id = reply.attributes['.id'];
+      if (!id) return false;
+
+      if (reply.attributes['.dead'] !== 'yes' && reply.attributes.user === testUser) {
+        activeIds.add(id);
+        return false;
+      }
+
+      return reply.attributes['.dead'] === 'yes' && activeIds.has(id);
+    },
     activeEvents,
   );
 
-  const userObservation = waitForMatchingReply(
-    userStream,
-    timeoutMs,
-    (reply) => reply.type === 're' && reply.attributes.name === testUser,
-    userEvents,
-  );
-
-  const deadReply = await deadPromise;
-  assert.ok(deadReply, `No .dead=yes event observed for LAB user ${testUser}`);
+  assert.ok(deadReply, `No correlated .dead=yes event observed for LAB user ${testUser}`);
 
   await Promise.all([activeStream.cancel(), userStream.cancel()]);
+  await userCollector;
   await Promise.all([
     drainClosedStream(activeStream, activeEvents),
     drainClosedStream(userStream, userEvents),
   ]);
-  await userObservation.catch(() => undefined);
 
   assertCleanDiagnostics(client, diagnostics);
 
