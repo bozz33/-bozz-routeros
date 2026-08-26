@@ -121,9 +121,17 @@ test('long-running listen consumes 20k sustained events and cancels cleanly', as
 
     await stream.cancel();
     assert.equal(stream.closed, true);
-    assert.equal(stream.queuedReplies, 0);
     assert.equal(client.pendingTags, 0);
+
+    // RouterOS cancel normally reports `!trap ... interrupted` on the target
+    // listener before the listener's terminal `!done`. The stream deliberately
+    // preserves that reply for consumers, so drain it before asserting that
+    // the bounded queue returned to baseline.
+    const interrupted = await stream.nextReply();
+    assert.equal(interrupted?.type, 'trap');
+    assert.equal(interrupted?.attributes.message, 'interrupted');
     assert.equal(await stream.nextReply(), undefined);
+    assert.equal(stream.queuedReplies, 0);
   } finally {
     await client.close();
     await closeServer(server);
