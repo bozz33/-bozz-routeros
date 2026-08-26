@@ -1,0 +1,46 @@
+name: RC1 certification tooling
+
+on:
+  push:
+    branches:
+      - 'cert/**'
+
+permissions:
+  contents: read
+
+jobs:
+  container-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout certification branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Verify certification branch preserves RC1 package content
+        env:
+          RC_SHA: 2f67c90762718b3678cff9b553a95adbf95ce457
+        run: |
+          git cat-file -e "$RC_SHA^{commit}"
+          git merge-base --is-ancestor "$RC_SHA" HEAD
+          CHANGED="$(git diff --name-only "$RC_SHA"..HEAD | grep -Ev '^(certification/|\.dockerignore$|\.github/workflows/cert-tooling\.yml$)' || true)"
+          if [ -n "$CHANGED" ]; then
+            echo 'Certification branch modified RC1 package/source files:' >&2
+            echo "$CHANGED" >&2
+            exit 1
+          fi
+
+      - name: Build digest-pinned certification image
+        run: |
+          docker build --pull --no-cache \
+            --file certification/container/Dockerfile \
+            --tag bozz-routeros-cert:rc1 \
+            .
+
+      - name: Record image identity
+        run: |
+          docker image inspect bozz-routeros-cert:rc1 \
+            --format 'image_id={{.Id}} created={{.Created}}'
+
+      - name: Execute package gate without runtime network
+        run: docker run --rm --network none bozz-routeros-cert:rc1
