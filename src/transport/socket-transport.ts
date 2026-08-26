@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import tls from 'node:tls';
 import { RouterOSCancelledError, RouterOSConnectionError } from '../errors.js';
+import { addSafeAbortListener } from '../util/abort-listener.js';
 import type {
   RouterOSSocket,
   RouterOSTransport,
@@ -108,6 +109,7 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let removeAbort: (() => void) | undefined;
       const timeout = setTimeout(() => {
         finishReject(
           new RouterOSConnectionError(
@@ -121,7 +123,8 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
         clearTimeout(timeout);
         socket.off(connectEvent, onConnected);
         socket.off('error', onInitialError);
-        signal?.removeEventListener('abort', onAbort);
+        removeAbort?.();
+        removeAbort = undefined;
       };
 
       const finishResolve = () => {
@@ -154,8 +157,7 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
 
       socket.once(connectEvent, onConnected);
       socket.once('error', onInitialError);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted) onAbort();
+      if (signal) removeAbort = addSafeAbortListener(signal, onAbort);
     });
 
     this.#configureSocket(socket);
@@ -230,9 +232,11 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
 
     await new Promise<void>((resolve, reject) => {
       let settled = false;
+      let removeAbort: (() => void) | undefined;
       const cleanup = () => {
         socket.off('error', onError);
-        signal?.removeEventListener('abort', onAbort);
+        removeAbort?.();
+        removeAbort = undefined;
       };
       const finishResolve = () => {
         if (settled) return;
@@ -254,11 +258,7 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
       const onAbort = () => finishReject(new RouterOSCancelledError('RouterOS write aborted'));
 
       socket.once('error', onError);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      if (signal?.aborted) {
-        onAbort();
-        return;
-      }
+      if (signal) removeAbort = addSafeAbortListener(signal, onAbort);
 
       try {
         socket.write(data, (error?: Error | null) => {
