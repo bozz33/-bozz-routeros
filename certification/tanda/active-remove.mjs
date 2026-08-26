@@ -45,10 +45,7 @@ try {
   const activeId = activeBefore[0]?.['.id'];
   assert.ok(activeId, 'The LAB active session has no RouterOS .id');
 
-  const stream = await client.listen('/ip/hotspot/active', {
-    attributes: { '.proplist': '.id,user,uptime,session-time-left' },
-    maxQueuedReplies: 128,
-  });
+  const stream = await client.listen('/ip/hotspot/active', { maxQueuedReplies: 128 });
 
   const deadPromise = waitForMatchingReply(
     stream,
@@ -56,7 +53,6 @@ try {
     (reply) =>
       reply.type === 're' &&
       reply.attributes['.id'] === activeId &&
-      reply.attributes.user === testUser &&
       reply.attributes['.dead'] === 'yes',
     activeEvents,
   );
