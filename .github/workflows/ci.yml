@@ -51,3 +51,15 @@ jobs:
 
       - name: Validate npm package contents
         run: npm pack --dry-run
+
+      - name: Build release tarball
+        id: pack
+        run: |
+          mkdir -p .artifacts
+          TARBALL="$(npm pack --pack-destination .artifacts --silent | tail -n 1)"
+          test -n "$TARBALL"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          sha256sum ".artifacts/$TARBALL"
+
+      - name: Install tarball in clean consumer project
+        run: node scripts/consumer-smoke.mjs ".artifacts/${{ steps.pack.outputs.tarball }}"
