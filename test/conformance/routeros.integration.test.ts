@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { RouterOSClient, query } from '../../src/index.js';
+import { RouterOSClient, routerOSQuery } from '../../src/index.js';
 
 const host = process.env.ROUTEROS_HOST;
 const username = process.env.ROUTEROS_USERNAME;
@@ -43,7 +43,9 @@ test('real RouterOS: empty print query returns [] rather than a protocol error',
   try {
     const rows = await ros.print('/ip/hotspot/active', {
       attributes: { '.proplist': '.id,user' },
-      queries: [query.eq('user', '__bozz_routeros_conformance_missing_user__')],
+      queries: routerOSQuery()
+        .equals('user', '__bozz_routeros_conformance_missing_user__')
+        .toWords(),
     });
     assert.deepEqual(rows, []);
     assert.equal(ros.pendingTags, 0);
