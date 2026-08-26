@@ -42,5 +42,13 @@ jobs:
           docker image inspect bozz-routeros-cert:rc1 \
             --format 'image_id={{.Id}} created={{.Created}}'
 
+      - name: Validate certification harness syntax
+        run: |
+          docker run --rm --network none --entrypoint /bin/sh bozz-routeros-cert:rc1 -c '
+            set -eu
+            find certification -type f -name "*.mjs" -exec node --check {} \;
+            find certification -type f -name "*.sh" -exec sh -n {} \;
+          '
+
       - name: Execute package gate without runtime network
         run: docker run --rm --network none bozz-routeros-cert:rc1
