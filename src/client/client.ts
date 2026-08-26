@@ -20,6 +20,7 @@ import type {
 import { TagRegistry, type RouterOSTagKind } from '../protocol/tag-registry.js';
 import { SocketTransport } from '../transport/socket-transport.js';
 import type { RouterOSTransport, RouterOSTransportOptions } from '../transport/types.js';
+import { addSafeAbortListener } from '../util/abort-listener.js';
 import { createDeferred, type Deferred } from '../util/deferred.js';
 import { buildCommandSentence, normalizeCommand } from './command.js';
 import { RouterOSStreamController } from './stream.js';
@@ -36,6 +37,8 @@ export interface RouterOSClientOptions extends RouterOSTransportOptions {
   readonly username?: string;
   readonly password?: string;
   readonly commandTimeoutMs?: number;
+  /** Hard deadline for completing both `/cancel` and target command lifecycles. */
+  readonly cancelTimeoutMs?: number;
   readonly decoder?: SentenceDecoderOptions;
   readonly streamMaxQueuedReplies?: number;
   readonly streamOverflowPolicy?: RouterOSStreamOverflowPolicy;
@@ -62,7 +65,6 @@ interface CancelCoordinator {
   protocolComplete: boolean;
   error?: unknown;
   timer?: NodeJS.Timeout;
-  removeAbort?: () => void;
 }
 
 interface PendingListener {
@@ -329,13 +331,13 @@ export class RouterOSClient extends EventEmitter implements RouterOSClientLike {
 
     if (options.signal) {
       const onAbort = () => {
+        // Once a listen has been dispatched, aborting the owner must trigger a
+        // protocol cleanup that is independent from the aborted signal itself.
         void stream.cancel().catch((error) => {
           this.emit('protocolError', { error, tag, command: listenCommand });
         });
       };
-      options.signal.addEventListener('abort', onAbort, { once: true });
-      pending.removeAbort = () => options.signal?.removeEventListener('abort', onAbort);
-      if (options.signal.aborted) onAbort();
+      pending.removeAbort = addSafeAbortListener(options.signal, onAbort);
     }
 
     return stream;
@@ -344,10 +346,7 @@ export class RouterOSClient extends EventEmitter implements RouterOSClientLike {
   async #cancelListener(targetTag: string, signal?: AbortSignal): Promise<void> {
     const listener = this.#listeners.get(targetTag);
     if (!listener || listener.stream.closed) return;
-    if (listener.cancel) return listener.cancel.deferred.promise;
-    if (signal?.aborted) {
-      throw new RouterOSCancelledError(`Cancellation aborted for RouterOS listener ${targetTag}`);
-    }
+    if (listener.cancel) return this.#waitForCancel(listener.cancel, signal);
 
     const cancelTag = this.#reserveTag('cancel', undefined, 'X');
     const coordinator: CancelCoordinator = {
@@ -363,55 +362,109 @@ export class RouterOSClient extends EventEmitter implements RouterOSClientLike {
       stateMachine: new CommandStateMachine(cancelTag),
       coordinator,
     });
-    this.#armCancelWait(coordinator, signal);
+    this.#armCancelWait(coordinator);
 
-    try {
-      await this.#transport.write(
-        buildCommandSentence('/cancel', cancelTag, { tag: targetTag }),
-        signal,
-      );
-    } catch (error) {
-      // `/cancel` itself may have reached RouterOS even if the local write
-      // acknowledgement failed. Keep both tags registered so late terminal
-      // replies are consumed correctly rather than becoming process errors.
-      coordinator.error = error;
-    }
+    // The caller's AbortSignal bounds only the caller's wait. It must never
+    // abort the RouterOS `/cancel` dispatch, otherwise the remote `listen`
+    // could remain alive with an unknown lifecycle.
+    void this.#transport
+      .write(buildCommandSentence('/cancel', cancelTag, { tag: targetTag }))
+      .catch((error) => this.#quarantineCancelLifecycle(coordinator, error));
 
-    return coordinator.deferred.promise;
+    return this.#waitForCancel(coordinator, signal);
   }
 
-  #armCancelWait(coordinator: CancelCoordinator, signal?: AbortSignal): void {
-    const timeoutMs = this.#options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
-    if (timeoutMs > 0) {
-      coordinator.timer = setTimeout(() => {
-        coordinator.deferred.reject(
-          new RouterOSTimeoutError(
-            `Timed out waiting for RouterOS listener ${coordinator.targetTag} cancellation lifecycle`,
-          ),
-        );
-      }, timeoutMs);
-      coordinator.timer.unref?.();
+  #waitForCancel(coordinator: CancelCoordinator, signal?: AbortSignal): Promise<void> {
+    if (!signal) return coordinator.deferred.promise;
+    if (signal.aborted) {
+      return Promise.reject(
+        new RouterOSCancelledError(
+          `Cancelled while waiting for RouterOS listener ${coordinator.targetTag} to stop`,
+        ),
+      );
     }
 
-    if (signal) {
-      const onAbort = () => {
-        coordinator.deferred.reject(
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let removeAbort: (() => void) | undefined;
+
+      const cleanup = () => {
+        removeAbort?.();
+        removeAbort = undefined;
+      };
+      const finishResolve = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const finishReject = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      removeAbort = addSafeAbortListener(signal, () => {
+        finishReject(
           new RouterOSCancelledError(
             `Cancelled while waiting for RouterOS listener ${coordinator.targetTag} to stop`,
           ),
         );
-      };
-      signal.addEventListener('abort', onAbort, { once: true });
-      coordinator.removeAbort = () => signal.removeEventListener('abort', onAbort);
-      if (signal.aborted) onAbort();
-    }
+      });
+      if (settled) cleanup();
+
+      void coordinator.deferred.promise.then(finishResolve, finishReject);
+    });
+  }
+
+  #armCancelWait(coordinator: CancelCoordinator): void {
+    const timeoutMs =
+      this.#options.cancelTimeoutMs
+      ?? this.#options.commandTimeoutMs
+      ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    if (timeoutMs <= 0) return;
+
+    coordinator.timer = setTimeout(() => {
+      if (coordinator.protocolComplete) return;
+      const error = new RouterOSTimeoutError(
+        `Timed out waiting for RouterOS listener ${coordinator.targetTag} cancellation lifecycle`,
+      );
+      this.#quarantineCancelLifecycle(coordinator, error);
+    }, timeoutMs);
+    coordinator.timer.unref?.();
+  }
+
+  #quarantineCancelLifecycle(coordinator: CancelCoordinator, cause: unknown): void {
+    if (coordinator.protocolComplete) return;
+    coordinator.error = cause;
+    const error = cause instanceof RouterOSTimeoutError || cause instanceof RouterOSConnectionError
+      ? cause
+      : new RouterOSConnectionError(
+          `RouterOS cancellation lifecycle became ambiguous for listener ${coordinator.targetTag}`,
+          { cause },
+        );
+
+    if (coordinator.timer) clearTimeout(coordinator.timer);
+    coordinator.deferred.reject(error);
+    this.emit('protocolError', {
+      error,
+      tag: coordinator.targetTag,
+      command: '/cancel',
+      cancelTag: coordinator.cancelTag,
+    });
+
+    // Closing the API connection is the only safe way to guarantee that a
+    // remote long-running command cannot survive after its local lifecycle has
+    // become unknowable. Local registries are failed synchronously as well.
+    this.#failAll(error);
+    void this.#transport.close();
   }
 
   #completeCancel(coordinator: CancelCoordinator): void {
     if (!coordinator.targetDone || !coordinator.cancelDone || coordinator.protocolComplete) return;
     coordinator.protocolComplete = true;
     if (coordinator.timer) clearTimeout(coordinator.timer);
-    coordinator.removeAbort?.();
     if (coordinator.error !== undefined) coordinator.deferred.reject(coordinator.error);
     else coordinator.deferred.resolve();
   }
@@ -592,9 +645,7 @@ export class RouterOSClient extends EventEmitter implements RouterOSClientLike {
           : new RouterOSCancelledError(`RouterOS command aborted: ${pending.command}`);
         this.#rejectCommand(tag, error);
       };
-      options.signal.addEventListener('abort', onAbort, { once: true });
-      pending.removeAbort = () => options.signal?.removeEventListener('abort', onAbort);
-      if (options.signal.aborted) onAbort();
+      pending.removeAbort = addSafeAbortListener(options.signal, onAbort);
     }
   }
 
@@ -665,7 +716,6 @@ export class RouterOSClient extends EventEmitter implements RouterOSClientLike {
 
     for (const [tag, pending] of [...this.#cancels]) {
       if (pending.coordinator.timer) clearTimeout(pending.coordinator.timer);
-      pending.coordinator.removeAbort?.();
       pending.coordinator.deferred.reject(connectionError);
       this.#cancels.delete(tag);
       this.#tags.release(tag);
