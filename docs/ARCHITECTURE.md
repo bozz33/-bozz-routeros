@@ -1,90 +1,144 @@
-# Architecture v0
+# Architecture
 
-## Scope
+`@bozz/routeros` is a general-purpose RouterOS Binary API SDK. Application-specific topology and business logic live above the package.
 
-`@bozz/routeros` is a RouterOS Binary API protocol and transport library. It does not know about BOZZ vouchers, tenants, accounting, Redis, Laravel, or application-specific workflows.
-
-## Core invariants
-
-1. `!empty` is a successful empty observation, not an exception and not a terminal lifecycle event by itself.
-2. `!trap` is accumulated for the command tag and the tag remains alive until `!done`.
-3. `!done` is the normal terminal reply for a command tag.
-4. `!fatal` terminates the connection and rejects all pending work.
-5. Late/orphan replies never crash the host process.
-6. `/cancel` has its own command tag; cancellation of a listener and completion of the cancel command are tracked independently.
-7. Reads and writes have different retry semantics. A write whose acknowledgement is lost becomes ambiguous until state reconciliation proves the outcome.
-8. Protocol parsing and business policy are separated.
-
-## Package layers
+## Layering
 
 ```text
-codec
-  word length encoding
-  word encoding
-  streaming sentence decoder
-
-protocol
-  reply parser
-  TagRegistry
-  CommandStateMachine
-  ListenStateMachine
-  cancellation lifecycle
-
-transport
-  TcpTransport
-  TlsTransport
-  keepalive / no-delay
-  socket lifecycle
-
-client
-  connect/login
-  execute/print
-  listen/cancel
-
-supervisor
-  reconnect/backoff/jitter
-  control vs realtime connection roles
-  generation tracking
-
-observability
-  lifecycle hooks and metrics contracts
-```
-
-## Intended BOZZ deployment topology
-
-The package is capable of arbitrary tagged multiplexing, but BOZZ-CENTER will intentionally isolate failure domains using three logical connections per router:
-
-```text
+Application / orchestration
+        │
+        ▼
+RouterOSClient / dynamic API
+        │
+        ├── command state machines
+        ├── TagRegistry
+        ├── listen/cancel streams
+        └── conservative write semantics
+        │
+        ▼
+SocketTransport
+        │
+        ├── TCP (8728 by default)
+        └── TLS/API-SSL (8729 by default)
+        │
+        ▼
 RouterOS
-├── CONTROL       -> print/add/set/remove/targeted reads
-├── ACTIVE LISTEN -> /ip/hotspot/active/listen
-└── USER LISTEN   -> /ip/hotspot/user/listen
 ```
 
-This topology belongs to the BOZZ Gateway, not to the protocol package itself.
+Optional generic facilities sit beside the client:
 
-## Bootstrap/reconciliation pattern
+```text
+RouterOSConnectionSupervisor
+  └── reconnect / backoff / jitter / generation
 
-Realtime consumers should use:
+RouterOSRuntimeHealthMonitor
+  └── Node.js event-loop/libuv diagnostics
+```
+
+## Protocol authority
+
+The MikroTik RouterOS API manual is normative for:
+
+- binary word/sentence framing;
+- commands and attribute/query words;
+- `.tag` multiplexing;
+- `!re`, `!empty`, `!trap`, `!done`, `!fatal` replies;
+- `listen` behavior;
+- `/cancel` semantics.
+
+Node.js official documentation is normative for TCP, TLS, AbortSignal integration, EventEmitter behavior, and runtime diagnostics.
+
+Third-party SDKs are references, not authorities. The framing/streaming base was adapted from `SourceRegistry/mikrotik-client`; `@fibercom/routeros-api` is used as a comparative implementation reference.
+
+## Command lifecycle
+
+A normal tagged command remains registered until its terminal RouterOS lifecycle is known.
+
+```text
+SENT
+ ├── !re     -> accumulate record
+ ├── !empty  -> mark empty; keep tag
+ ├── !trap   -> accumulate trap; keep tag
+ ├── !done   -> terminal; resolve/reject and release tag
+ └── !fatal  -> connection-fatal; fail pending work and close
+```
+
+`!empty` is explicitly **not** treated as an error and does **not** release the tag before `!done`.
+
+## Long-running streams
+
+`listen()` returns a bounded `AsyncIterable` stream. Buffer overflow can either drop the oldest record or fail the stream, depending on policy. In error mode, remote `/cancel` cleanup is initiated automatically before the local stream is closed.
+
+The raw reply is exposed, including properties such as `=.dead=yes`; the SDK does not impose business semantics on those fields.
+
+## Strict cancellation
+
+MikroTik documents `/cancel` as a separate command:
+
+```text
+/listen              .tag=L1
+/cancel =tag=L1      .tag=X1
+```
+
+The SDK tracks `L1` and `X1` independently. The cancellation lifecycle is complete only when both the cancel command and the target command have reached terminal state.
+
+A caller's `AbortSignal` controls only how long that caller waits for cancellation. It does not suppress or abort the RouterOS `/cancel` cleanup once cancellation has been requested.
+
+If the lifecycle does not become knowable before `cancelTimeoutMs`, the API connection is quarantined/closed. Closing is safer than continuing to use a socket on which an unknown long-running command may still exist.
+
+## Writes and ambiguity
+
+RouterOS mutations are not automatically replayed after acknowledgement loss. If command bytes may have reached RouterOS but the terminal reply was not observed, the SDK reports `RouterOSAmbiguousWriteError`.
+
+Consumers should perform read-after-write reconciliation before retrying.
+
+## Transport
+
+The transport uses native Node.js primitives only:
+
+- `node:net`;
+- `node:tls`;
+- TCP keepalive;
+- `TCP_NODELAY`;
+- serialized physical writes with protocol-level concurrency through `.tag`;
+- TLS verification by default;
+- DNS SNI only when appropriate.
+
+Abort handling uses Node.js `events.addAbortListener()` through an internal idempotent helper so third-party `stopImmediatePropagation()` cannot suppress library cleanup.
+
+## Reconnect supervisor
+
+The optional supervisor owns one generic client and provides:
+
+- exponential backoff;
+- none/full/equal jitter;
+- reconnect counters;
+- connection generations;
+- stable-period backoff reset;
+- lifecycle events/snapshots.
+
+The SDK does **not** prescribe how many connections an application uses.
+
+For example, BOZZ-CENTER can compose three isolated supervised clients for CONTROL, ACTIVE-LISTEN, and USER-LISTEN. Another application can use one multiplexed connection or a different topology entirely.
+
+## Snapshot/listen race avoidance
+
+Applications that require an authoritative live mirror can compose the SDK using:
 
 ```text
 open LISTEN
 -> buffer events
 -> take fresh CONTROL snapshot
--> establish a new generation
+-> establish generation N
 -> publish snapshot
 -> replay buffered events
 -> enter LIVE mode
 ```
 
-This prevents the snapshot/listen race where a RouterOS change occurs between the two operations.
+This pattern belongs to the consuming application's orchestration layer, not to the protocol SDK.
 
-## Compatibility strategy
+## Conformance
 
-The project will maintain a RouterOS conformance suite against:
+See `CONFORMANCE.md`.
 
-- CHR test versions,
-- latest supported RouterOS 7.x,
-- physical BOZZ routers such as TANDA before production promotion.
-
-SourceRegistry/mikrotik-client is the initial implementation reference/base. Fibercom/routeros-api is a comparative oracle/benchmark. MikroTik's official RouterOS API documentation remains authoritative when implementations disagree.
+The v0 core is feature-complete when local CI is green. Production certification additionally requires successful real RouterOS conformance against CHR and target RouterOS releases.
