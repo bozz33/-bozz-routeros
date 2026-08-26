@@ -1,7 +1,7 @@
 {
   "name": "@bozz/routeros",
   "version": "0.0.0-dev",
-  "description": "Modern protocol-correct RouterOS Binary API transport for Node.js",
+  "description": "Modern protocol-correct RouterOS Binary API SDK for Node.js and TypeScript",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -11,10 +11,10 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE", "NOTICE"],
+  "files": ["dist", "README.md", "LICENSE", "NOTICE", "docs"],
   "sideEffects": false,
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=24.19.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -22,6 +22,15 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
+  "keywords": [
+    "mikrotik",
+    "routeros",
+    "routerboard",
+    "api",
+    "typescript",
+    "nodejs",
+    "network-automation"
+  ],
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.20.0",

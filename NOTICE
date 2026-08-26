@@ -3,8 +3,30 @@ Copyright 2026 BOZZ contributors
 
 Licensed under the Apache License, Version 2.0.
 
-Upstream research/reference projects currently include:
-- SourceRegistry/mikrotik-client (Apache-2.0)
-- Fibercom/routeros-api (MIT)
+Upstream implementation base
+----------------------------
+Portions of the RouterOS binary framing/streaming design are adapted from:
 
-This NOTICE does not claim that upstream source code has already been incorporated. If source-derived code is introduced, the applicable copyright and attribution notices must be retained and this file updated accordingly.
+SourceRegistry/mikrotik-client
+https://github.com/SourceRegistry/mikrotik-client
+Baseline commit: 4b2869c97f287bfef3f9fa03803bbe1b1b96a92b
+License: Apache-2.0
+
+The adapted portions have been substantially refactored and hardened for this
+project, including stricter `!empty`/`!done` lifecycle handling, independent
+`/cancel` tag tracking, bounded stream buffers, protocol resource limits,
+conservative ambiguous-write semantics, and Node.js 24.19 networking behavior.
+
+Comparative implementation reference
+------------------------------------
+@fibercom/routeros-api 2.0.0 is used as a functional/reference benchmark for
+fragmented decoding, tagged concurrency, streaming, TLS, legacy compatibility,
+and public API design. No Fibercom source code is incorporated by this notice.
+License of that reference package: MIT.
+
+Protocol/runtime authority
+--------------------------
+When implementations disagree, MikroTik's official RouterOS API documentation
+is authoritative for protocol behavior, and the official Node.js documentation
+is authoritative for runtime/socket semantics. Real RouterOS/CHR conformance
+tests are required before stable releases.

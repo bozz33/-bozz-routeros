@@ -12,6 +12,7 @@ export class RouterOSConnectionError extends RouterOSError {}
 export class RouterOSTimeoutError extends RouterOSError {}
 export class RouterOSCancelledError extends RouterOSError {}
 export class RouterOSAuthenticationError extends RouterOSError {}
+export class RouterOSStreamOverflowError extends RouterOSError {}
 
 export class RouterOSTrapError extends RouterOSError {
   public constructor(
