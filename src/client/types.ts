@@ -8,23 +8,23 @@ export type RouterOSMutationKind = 'auto' | 'read' | 'write' | 'control';
 export type RouterOSStreamOverflowPolicy = 'error' | 'drop-oldest';
 
 export interface RouterOSCommandOptions {
-  readonly attributes?: RouterOSInput;
-  readonly apiAttributes?: RouterOSInput;
-  readonly queries?: readonly string[];
-  readonly tag?: string;
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
+  readonly attributes?: RouterOSInput | undefined;
+  readonly apiAttributes?: RouterOSInput | undefined;
+  readonly queries?: readonly string[] | undefined;
+  readonly tag?: string | undefined;
+  readonly timeoutMs?: number | undefined;
+  readonly signal?: AbortSignal | undefined;
   /**
    * Controls failure semantics after command bytes may have reached RouterOS.
    * `auto` is conservative: known read commands are reads, protocol commands
    * are control operations, and unknown commands are treated as writes.
    */
-  readonly kind?: RouterOSMutationKind;
+  readonly kind?: RouterOSMutationKind | undefined;
 }
 
 export interface RouterOSListenOptions extends RouterOSCommandOptions {
-  readonly maxQueuedReplies?: number;
-  readonly overflowPolicy?: RouterOSStreamOverflowPolicy;
+  readonly maxQueuedReplies?: number | undefined;
+  readonly overflowPolicy?: RouterOSStreamOverflowPolicy | undefined;
 }
 
 export interface RouterOSStream extends AsyncIterable<RouterOSReply> {
