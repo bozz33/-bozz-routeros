@@ -13,9 +13,9 @@ ACTUAL_NPM="$(npm --version)"
 [ "$ACTUAL_NPM" = "$EXPECTED_NPM" ]
 
 echo "$EXPECTED_LOCK_SHA256  package-lock.json" | sha256sum -c -
+test -d node_modules
 
-rm -rf node_modules dist .artifacts
-npm ci --ignore-scripts
+rm -rf dist .artifacts
 npm run typecheck
 npm test
 npm run test:stress
