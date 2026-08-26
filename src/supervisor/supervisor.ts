@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { RouterOSClientLike } from '../client/types.js';
 import { RouterOSCancelledError } from '../errors.js';
+import { addSafeAbortListener } from '../util/abort-listener.js';
 import { createDeferred, type Deferred } from '../util/deferred.js';
 import type {
   NormalizedRouterOSReconnectPolicy,
@@ -223,7 +224,7 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
   async #run(signal: AbortSignal): Promise<void> {
     while (!signal.aborted) {
       const disconnectWait = this.#createDisconnectWait(signal);
-      this.#setState(this.#generation === 0n ? 'connecting' : 'connecting');
+      this.#setState('connecting');
 
       try {
         await this.#client.connect(signal);
@@ -296,12 +297,14 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
   #createDisconnectWait(signal: AbortSignal): DisconnectWait {
     const deferred = createDeferred<RouterOSDisconnectedEvent>();
     let active = true;
+    let removeAbort: (() => void) | undefined;
 
     const cleanup = () => {
       if (!active) return;
       active = false;
       this.#client.off('disconnected', onDisconnected);
-      signal.removeEventListener('abort', onAbort);
+      removeAbort?.();
+      removeAbort = undefined;
     };
     const onDisconnected = (event: RouterOSDisconnectedEvent) => {
       cleanup();
@@ -313,8 +316,7 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
     };
 
     this.#client.on('disconnected', onDisconnected);
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
+    removeAbort = addSafeAbortListener(signal, onAbort);
 
     return { promise: deferred.promise, cancel: cleanup };
   }
