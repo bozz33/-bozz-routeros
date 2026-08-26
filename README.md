@@ -39,7 +39,7 @@ const client = new RouterOSClient({
 await client.connect();
 
 const resources = await client.print('/system/resource', {
-  apiAttributes: {
+  attributes: {
     '.proplist': ['uptime', 'cpu-load', 'version'],
   },
 });
@@ -49,6 +49,8 @@ for await (const reply of stream) {
   if (reply.type === 're') console.log(reply.attributes);
 }
 ```
+
+`attributes: { '.proplist': [...] }` intentionally produces the RouterOS binary API word `=.proplist=...`. The API attribute namespace (words beginning directly with `.`) is separate; MikroTik currently documents `.tag` there.
 
 Raw RouterOS access is intentional: callers can use new menus and commands without waiting for a package release. Typed helpers can be layered on top without restricting the protocol surface.
 
