@@ -86,9 +86,17 @@ function createResilienceRouter(): net.Server {
 
         if (command === '/interface/listen') {
           listenTag = tag;
-          socket.write(encodeSentence(['!re', '=.id=*1', '=name=ether1', `.tag=${tag}`]));
-          socket.write(encodeSentence(['!re', '=.id=*2', '=name=ether2', `.tag=${tag}`]));
-          socket.write(encodeSentence(['!re', '=.id=*3', '=name=ether3', `.tag=${tag}`]));
+          // Send multiple complete RouterOS sentences in one TCP write. The
+          // client decoder must split all of them synchronously; with a queue
+          // limit of 1 this deterministically exercises backpressure overflow.
+          socket.write(
+            Buffer.concat([
+              encodeSentence(['!re', '=.id=*1', '=name=ether1', `.tag=${tag}`]),
+              encodeSentence(['!re', '=.id=*2', '=name=ether2', `.tag=${tag}`]),
+              encodeSentence(['!re', '=.id=*3', '=name=ether3', `.tag=${tag}`]),
+              encodeSentence(['!re', '=.id=*4', '=name=ether4', `.tag=${tag}`]),
+            ]),
+          );
           continue;
         }
 
@@ -192,7 +200,7 @@ test('listen overflow fails locally and automatically cancels the remote RouterO
 
     let sawOverflow = false;
     const deliveredNames: string[] = [];
-    for (let attempt = 0; attempt < 4 && !sawOverflow; attempt += 1) {
+    for (let attempt = 0; attempt < 5 && !sawOverflow; attempt += 1) {
       try {
         const reply = await stream.nextReply(500);
         if (reply?.attributes.name) deliveredNames.push(reply.attributes.name);
