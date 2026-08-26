@@ -16,6 +16,8 @@ A modern, protocol-correct RouterOS Binary API SDK for Node.js and TypeScript.
 - Empty results, late tags, and orphan replies must never be misclassified as RouterOS outages.
 - Unknown raw commands remain usable; the SDK must not lag behind future RouterOS menus.
 - Reads and writes have different failure semantics. Writes are never blindly replayed after ambiguous acknowledgement loss.
+- Generic reconnect supervision with exponential backoff, jitter, connection generations, and stable-period reset.
+- Optional zero-dependency Node runtime health diagnostics for event-loop delay/utilization and libuv activity.
 - No BOZZ business concepts in the core package.
 - Conformance tests against RouterOS CHR and real RouterOS devices before stable release.
 
@@ -28,7 +30,11 @@ The minimum is deliberate: Node 24.19 adds the keepalive controls used by the tr
 ## Example
 
 ```ts
-import { RouterOSClient } from '@bozz/routeros';
+import {
+  RouterOSClient,
+  RouterOSConnectionSupervisor,
+  RouterOSRuntimeHealthMonitor,
+} from '@bozz/routeros';
 
 const client = new RouterOSClient({
   host: '192.168.88.1',
@@ -54,16 +60,48 @@ for await (const reply of stream) {
 
 Raw RouterOS access is intentional: callers can use new menus and commands without waiting for a package release. Typed helpers can be layered on top without restricting the protocol surface.
 
+### Optional reconnect supervision
+
+```ts
+const supervisor = new RouterOSConnectionSupervisor({
+  client,
+  reconnect: {
+    initialDelayMs: 250,
+    maxDelayMs: 30_000,
+    multiplier: 2,
+    jitter: 'full',
+    resetAfterStableMs: 30_000,
+  },
+});
+
+await supervisor.start();
+console.log(supervisor.snapshot());
+```
+
+The supervisor manages one generic client. Applications that want isolated control/realtime sockets compose multiple supervisors above the SDK rather than encoding application-specific roles in the package.
+
+### Optional Node runtime diagnostics
+
+```ts
+const runtime = new RouterOSRuntimeHealthMonitor({ resolutionMs: 20 });
+runtime.start();
+
+const health = runtime.snapshot();
+console.log(health.eventLoopUtilization, health.eventLoopDelay.p99Ms);
+```
+
+The runtime monitor has no Prometheus/OpenTelemetry dependency. It reports native Node.js event-loop and libuv diagnostics; the application decides how to export them.
+
 ## Layers
 
 ```text
 src/
-├── codec/       # RouterOS word-length and sentence encoding/decoding
-├── protocol/    # replies, tags, command state machines
-├── transport/   # native TCP/TLS socket lifecycle
-├── client/      # login, execute, print, listen, cancel
-├── supervisor/  # reconnect/backoff/health primitives (next phase)
-├── observability/
+├── codec/          # RouterOS word-length and sentence encoding/decoding
+├── protocol/       # replies, tags, command state machines
+├── transport/      # native TCP/TLS socket lifecycle
+├── client/         # login, execute, print, listen, cancel
+├── supervisor/     # reconnect/backoff/jitter/generation primitives
+├── observability/  # optional Node runtime health diagnostics
 └── errors/
 ```
 
