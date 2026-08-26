@@ -14,8 +14,12 @@ function normalizeScalar(value: RouterOSScalar): string | undefined {
   return String(value);
 }
 
+function isScalarArray(value: RouterOSPrimitive): value is readonly RouterOSScalar[] {
+  return Array.isArray(value);
+}
+
 function normalizeValue(value: RouterOSPrimitive): string | undefined {
-  if (Array.isArray(value)) {
+  if (isScalarArray(value)) {
     return value.map((item) => normalizeScalar(item) ?? '').join(',');
   }
   return normalizeScalar(value);
