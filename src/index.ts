@@ -8,6 +8,7 @@ export * from './protocol/command-state-machine.js';
 export * from './protocol/reply-parser.js';
 export * from './protocol/reply.js';
 export * from './protocol/tag-registry.js';
+export * from './supervisor/supervisor.js';
 export * from './supervisor/types.js';
 export * from './transport/socket-transport.js';
 export * from './transport/types.js';
