@@ -33,3 +33,6 @@ jobs:
 
       - name: Typecheck, tests and build
         run: npm run check
+
+      - name: Validate npm package contents
+        run: npm pack --dry-run
