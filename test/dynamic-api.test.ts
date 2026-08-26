@@ -128,9 +128,9 @@ test('dynamic API nodes are not thenables and can be safely awaited/passed throu
   assert.equal(resolved, api.ip.hotspot);
 });
 
-test('dynamic API refuses path-dependent operations at root', async () => {
+test('dynamic API refuses path-dependent operations at root', () => {
   const api = createRouterOSApi(new RecordingClient());
-  await assert.rejects(api.print(), TypeError);
-  await assert.rejects(api.listen(), TypeError);
-  await assert.rejects(api.add(), TypeError);
+  assert.throws(() => api.print(), TypeError);
+  assert.throws(() => api.listen(), TypeError);
+  assert.throws(() => api.add(), TypeError);
 });
