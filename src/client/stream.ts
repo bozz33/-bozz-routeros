@@ -59,12 +59,14 @@ export class RouterOSStreamController implements RouterOSStream {
       if (this.#options.overflowPolicy === 'drop-oldest') {
         this.#queue.shift();
       } else {
-        this.finish(
-          new RouterOSStreamOverflowError(
-            `RouterOS stream ${this.tag} exceeded ${this.#options.maxQueuedReplies} queued replies`,
-          ),
+        const overflow = new RouterOSStreamOverflowError(
+          `RouterOS stream ${this.tag} exceeded ${this.#options.maxQueuedReplies} queued replies`,
         );
+        // Start the RouterOS `/cancel` lifecycle while the listener is still
+        // registered/open locally. The cancellation promise is intentionally
+        // detached because the consumer-facing failure is the overflow itself.
         this.#cancelAfterOverflow();
+        this.finish(overflow);
         return;
       }
     }
@@ -76,11 +78,9 @@ export class RouterOSStreamController implements RouterOSStream {
     if (this.#overflowCancelStarted) return;
     this.#overflowCancelStarted = true;
 
-    // The local consumer has already failed with RouterOSStreamOverflowError,
-    // but the remote RouterOS `listen` must still be cancelled so its tag and
-    // server-side command do not leak. Cancellation failure is intentionally
-    // absorbed here: the transport/supervisor owns connection-level recovery,
-    // while the original overflow remains the consumer-visible failure.
+    // If cancellation itself fails, the transport/supervisor owns connection-
+    // level recovery. Absorb the detached promise to avoid an unhandled
+    // rejection while preserving RouterOSStreamOverflowError for the consumer.
     void this.#options.cancel().catch(() => undefined);
   }
 
@@ -157,8 +157,8 @@ export class RouterOSStreamController implements RouterOSStream {
 
   public async cancel(signal?: AbortSignal): Promise<void> {
     // Even a locally closed stream may still have a remote RouterOS listener
-    // that needs cancellation (for example after a queue overflow). The client
-    // callback is idempotent when the remote lifecycle is already complete.
+    // that needs cancellation. The client callback is idempotent when the
+    // RouterOS-side lifecycle is already complete.
     await this.#options.cancel(signal);
   }
 
