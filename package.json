@@ -20,6 +20,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "test:stress": "node --import tsx --test test/tag-leak-stress.test.ts test/listen-soak.test.ts test/concurrency.test.ts",
+    "test:conformance": "node --import tsx --test test/conformance/routeros.integration.test.ts",
     "check": "npm run typecheck && npm test && npm run build"
   },
   "keywords": [
