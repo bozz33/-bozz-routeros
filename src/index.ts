@@ -1,3 +1,4 @@
+export * from './api/dynamic.js';
 export * from './client/client.js';
 export * from './client/command.js';
 export * from './client/types.js';
