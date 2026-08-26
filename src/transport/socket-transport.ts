@@ -7,10 +7,31 @@ import type {
   RouterOSTransport,
   RouterOSTransportKind,
   RouterOSTransportOptions,
+  RouterOSTlsOptions,
 } from './types.js';
 
 function defaultPort(kind: RouterOSTransportKind): number {
   return kind === 'tls' ? 8729 : 8728;
+}
+
+/**
+ * Resolve the TLS SNI server name according to Node.js `tls.connect()` rules.
+ * DNS names use SNI by default; IP literals do not. An explicit empty string
+ * remains a supported way for callers to disable SNI.
+ */
+export function resolveTlsServername(
+  host: string,
+  tlsOptions: RouterOSTlsOptions,
+): string | undefined {
+  const explicit = tlsOptions.servername;
+  if (explicit !== undefined) {
+    if (explicit !== '' && net.isIP(explicit) !== 0) {
+      throw new TypeError('TLS servername must be a DNS hostname, not an IP address');
+    }
+    return explicit;
+  }
+
+  return net.isIP(host) === 0 ? host : undefined;
 }
 
 /** Native Node.js byte transport for the RouterOS binary API. */
@@ -59,11 +80,12 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
     let socket: RouterOSSocket;
     if (kind === 'tls') {
       const tlsOptions = this.#options.tls ?? {};
+      const servername = resolveTlsServername(this.#options.host, tlsOptions);
       socket = tls.connect({
         ...tlsOptions,
         host: this.#options.host,
         port,
-        servername: tlsOptions.servername ?? this.#options.host,
+        ...(servername === undefined ? {} : { servername }),
         ...(this.#options.localAddress === undefined
           ? {}
           : { localAddress: this.#options.localAddress }),
