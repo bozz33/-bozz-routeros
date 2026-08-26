@@ -25,6 +25,7 @@ export class RouterOSStreamController implements RouterOSStream {
   readonly #options: RouterOSStreamControllerOptions;
   #closed = false;
   #closeError: unknown;
+  #overflowCancelStarted = false;
 
   public constructor(
     public readonly tag: string,
@@ -63,11 +64,24 @@ export class RouterOSStreamController implements RouterOSStream {
             `RouterOS stream ${this.tag} exceeded ${this.#options.maxQueuedReplies} queued replies`,
           ),
         );
+        this.#cancelAfterOverflow();
         return;
       }
     }
 
     this.#queue.push(reply);
+  }
+
+  #cancelAfterOverflow(): void {
+    if (this.#overflowCancelStarted) return;
+    this.#overflowCancelStarted = true;
+
+    // The local consumer has already failed with RouterOSStreamOverflowError,
+    // but the remote RouterOS `listen` must still be cancelled so its tag and
+    // server-side command do not leak. Cancellation failure is intentionally
+    // absorbed here: the transport/supervisor owns connection-level recovery,
+    // while the original overflow remains the consumer-visible failure.
+    void this.#options.cancel().catch(() => undefined);
   }
 
   public finish(error?: unknown): void {
@@ -142,7 +156,9 @@ export class RouterOSStreamController implements RouterOSStream {
   }
 
   public async cancel(signal?: AbortSignal): Promise<void> {
-    if (this.#closed) return;
+    // Even a locally closed stream may still have a remote RouterOS listener
+    // that needs cancellation (for example after a queue overflow). The client
+    // callback is idempotent when the remote lifecycle is already complete.
     await this.#options.cancel(signal);
   }
 
