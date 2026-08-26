@@ -63,15 +63,11 @@ try {
   const concurrentResults = await Promise.all(concurrent);
   assert.ok(concurrentResults.every((rows) => rows.length === 0));
 
+  // Keep listen requests protocol-minimal. MikroTik documents `.proplist` for
+  // print; listen availability/attributes can vary by menu/version.
   const [activeStream, userStream] = await Promise.all([
-    client.listen('/ip/hotspot/active', {
-      attributes: { '.proplist': '.id,user,uptime,session-time-left' },
-      maxQueuedReplies: 256,
-    }),
-    client.listen('/ip/hotspot/user', {
-      attributes: { '.proplist': '.id,name,uptime,limit-uptime,disabled' },
-      maxQueuedReplies: 256,
-    }),
+    client.listen('/ip/hotspot/active', { maxQueuedReplies: 256 }),
+    client.listen('/ip/hotspot/user', { maxQueuedReplies: 256 }),
   ]);
 
   await Promise.all([
