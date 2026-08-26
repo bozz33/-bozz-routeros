@@ -1,120 +1,147 @@
 # @bozz/routeros
 
-A modern, protocol-correct RouterOS Binary API SDK for Node.js and TypeScript.
+Modern, protocol-correct RouterOS Binary API SDK for Node.js and TypeScript.
 
-`@bozz/routeros` is intentionally generic. It does not know about BOZZ-CENTER, vouchers, tenants, Redis, accounting, or any application-specific workflow. BOZZ-CENTER is only one intended consumer.
+`@bozz/routeros` is a general-purpose RouterOS SDK. It is **not** coupled to BOZZ-CENTER, HotSpot vouchers, Redis, accounting, or any application-specific workflow.
 
-## Design goals
+The implementation is derived in part from the RouterOS core of `@sourceregistry/mikrotik-client` (Apache-2.0; exact upstream baseline documented in `NOTICE`) and is independently hardened against the current MikroTik RouterOS API specification. `@fibercom/routeros-api` is used as a comparative implementation reference. The current MikroTik and Node.js official documentation remain the normative sources.
 
-- RouterOS 7.x Binary API first, aligned with MikroTik's official protocol documentation.
-- Strict reply lifecycle for `!re`, `!empty`, `!trap`, `!done`, and `!fatal`.
-- Correct `.tag` multiplexing and `/cancel` lifecycle.
-- Long-lived `listen` streams with bounded buffering, AsyncIterator, and AbortSignal support.
-- Native TCP/TLS transport built on official Node.js primitives.
-- TLS certificate verification enabled by default.
-- TCP keepalive and TCP_NODELAY for long-lived sockets.
-- Empty results, late tags, and orphan replies must never be misclassified as RouterOS outages.
-- Unknown raw commands remain usable; the SDK must not lag behind future RouterOS menus.
-- Reads and writes have different failure semantics. Writes are never blindly replayed after ambiguous acknowledgement loss.
-- Generic reconnect supervision with exponential backoff, jitter, connection generations, and stable-period reset.
-- Optional zero-dependency Node runtime health diagnostics for event-loop delay/utilization and libuv activity.
-- No BOZZ business concepts in the core package.
-- Conformance tests against RouterOS CHR and real RouterOS devices before stable release.
+## Current maturity
+
+The SDK core is **feature-complete for the planned v0 binary-API scope**, with CI covering protocol correctness, transport, TLS, concurrency, cancellation, stress, soak, packaging, and runtime observability.
+
+It is **not yet production-certified**. Production certification still requires the opt-in conformance suite to pass against real RouterOS CHR and the target RouterOS stable environment (including TANDA RouterOS 7.24.1 for BOZZ-CENTER integration).
 
 ## Runtime
 
-Node.js `>=24.19.0`.
+- Node.js `>=24.19.0`
+- ESM
+- strict TypeScript
+- no runtime dependencies
 
-The minimum is deliberate: Node 24.19 adds the keepalive controls used by the transport for `TCP_KEEPIDLE`, `TCP_KEEPINTVL`, and `TCP_KEEPCNT`.
+## Core capabilities
 
-## Example
+- RouterOS binary word/sentence codec
+- incremental decoder safe across fragmented or coalesced TCP data
+- bounded decoder resource limits
+- TCP and API-SSL/TLS transports using native Node.js `net` / `tls`
+- TLS CA and server-identity verification
+- DNS SNI handling without sending IP literals as SNI
+- TCP keepalive and `TCP_NODELAY`
+- strict replies: `!re`, `!empty`, `!trap`, `!done`, `!fatal`
+- `!empty` remains non-terminal until matching `!done`
+- concurrent commands multiplexed by `.tag`
+- orphan/late replies reported without crashing the process
+- raw commands for future RouterOS compatibility
+- ordered RouterOS query-word builder
+- dynamic menu API overlay for ergonomic access to arbitrary RouterOS paths
+- `listen` as bounded `AsyncIterable`
+- `.dead=yes` exposed unchanged to consumers
+- strict `/cancel` lifecycle tracking target-tag and cancel-tag independently
+- caller `AbortSignal` cannot suppress remote cancel cleanup
+- hard cancellation timeout quarantines/closes ambiguous connections
+- write timeouts/disconnects classified as ambiguous when RouterOS may have applied the mutation
+- optional reconnect supervisor with exponential backoff and jitter
+- Node runtime/event-loop observability
+
+## Quick start
 
 ```ts
-import {
-  RouterOSClient,
-  RouterOSConnectionSupervisor,
-  RouterOSRuntimeHealthMonitor,
-} from '@bozz/routeros';
+import { RouterOSClient, routerOSQuery } from '@bozz/routeros';
 
 const client = new RouterOSClient({
-  host: '192.168.88.1',
+  host: 'router.example.net',
   username: 'api-user',
-  password: 'secret',
+  password: process.env.ROUTEROS_PASSWORD ?? '',
+  kind: 'tls',
 });
 
 await client.connect();
 
 const resources = await client.print('/system/resource', {
-  attributes: {
-    '.proplist': ['uptime', 'cpu-load', 'version'],
-  },
+  attributes: { '.proplist': 'uptime,version,cpu-load' },
 });
 
-const stream = await client.listen('/interface');
+const active = await client.print('/ip/hotspot/active', {
+  attributes: { '.proplist': '.id,user,uptime' },
+  queries: routerOSQuery().equals('user', 'alice').toWords(),
+});
+
+const stream = await client.listen('/interface', {
+  attributes: { '.proplist': '.id,name,running,disabled' },
+});
+
 for await (const reply of stream) {
-  if (reply.type === 're') console.log(reply.attributes);
+  console.log(reply);
+  // Stop through another condition/task when appropriate:
+  // await stream.cancel();
 }
 ```
 
-`attributes: { '.proplist': [...] }` intentionally produces the RouterOS binary API word `=.proplist=...`. The API attribute namespace (words beginning directly with `.`) is separate; MikroTik currently documents `.tag` there.
+The raw client deliberately does not encode business semantics. RouterOS menus added in future RouterOS releases can be addressed immediately through raw paths without waiting for a new SDK version.
 
-Raw RouterOS access is intentional: callers can use new menus and commands without waiting for a package release. Typed helpers can be layered on top without restricting the protocol surface.
+## Dynamic API
 
-### Optional reconnect supervision
+The optional dynamic overlay builds RouterOS paths without maintaining a hard-coded menu tree:
 
 ```ts
-const supervisor = new RouterOSConnectionSupervisor({
-  client,
-  reconnect: {
-    initialDelayMs: 250,
-    maxDelayMs: 30_000,
-    multiplier: 2,
-    jitter: 'full',
-    resetAfterStableMs: 30_000,
-  },
+import { RouterOSClient, createRouterOSApi } from '@bozz/routeros';
+
+const client = new RouterOSClient({ host: '10.0.0.1', username: 'admin' });
+const api = createRouterOSApi(client);
+
+const identity = await api.system.identity.print();
+const users = await api.ip.hotspot.user.print({
+  attributes: { '.proplist': '.id,name,uptime,limit-uptime' },
 });
-
-await supervisor.start();
-console.log(supervisor.snapshot());
 ```
 
-The supervisor manages one generic client. Applications that want isolated control/realtime sockets compose multiple supervisors above the SDK rather than encoding application-specific roles in the package.
+## Safety model for writes
 
-### Optional Node runtime diagnostics
+Read commands may generally be retried after a known pre-dispatch failure. Mutations are different: if command bytes may have reached RouterOS but the terminal acknowledgement was lost, the SDK raises `RouterOSAmbiguousWriteError` instead of claiming a safe failure.
 
-```ts
-const runtime = new RouterOSRuntimeHealthMonitor({ resolutionMs: 20 });
-runtime.start();
+Applications should perform **read-after-write reconciliation** before deciding whether an ambiguous mutation can be retried.
 
-const health = runtime.snapshot();
-console.log(health.eventLoopUtilization, health.eventLoopDelay.p99Ms);
-```
+## Cancellation model
 
-The runtime monitor has no Prometheus/OpenTelemetry dependency. It reports native Node.js event-loop and libuv diagnostics; the application decides how to export them.
+MikroTik documents `/cancel` as a separate command with its own `.tag`; the command being cancelled is identified by the normal `=tag` argument. The SDK therefore tracks the two lifecycles independently and does not release the target listener until RouterOS finishes it.
 
-## Layers
+If a caller abandons `stream.cancel(signal)`, the caller's wait can be cancelled but the RouterOS cleanup continues. If RouterOS does not complete the cancellation lifecycle before `cancelTimeoutMs`, the connection is closed because remote state is unknowable.
 
-```text
-src/
-├── codec/          # RouterOS word-length and sentence encoding/decoding
-├── protocol/       # replies, tags, command state machines
-├── transport/      # native TCP/TLS socket lifecycle
-├── client/         # login, execute, print, listen, cancel
-├── supervisor/     # reconnect/backoff/jitter/generation primitives
-├── observability/  # optional Node runtime health diagnostics
-└── errors/
-```
+## Conformance and stress
 
-## Upstream base and references
+The CI suite includes:
 
-The initial binary framing/streaming implementation is adapted from the Apache-2.0 `SourceRegistry/mikrotik-client` project and then hardened/refactored. The pinned upstream baseline is recorded in `NOTICE`.
+- fragmented/coalesced binary frames
+- official query-word examples
+- `!empty -> !done`
+- `!trap` / `!fatal`
+- orphan/late replies
+- 256 concurrent out-of-order tagged commands
+- concurrent listeners and normal commands on one connection
+- TLS trust and hostname verification
+- stream overflow cleanup
+- caller-abort vs remote `/cancel` isolation
+- hard cancel timeout quarantine
+- 10,000 command lifecycles with zero tag leakage
+- 1,000 listen/cancel lifecycles with zero tag leakage
+- 20,000-event listen soak
+- reconnect supervisor tests
+- npm package assembly
 
-`@fibercom/routeros-api` 2.0.0 is used as a comparative functional/reference implementation for streaming, fragmented decoding, tagged concurrency, TLS, retries, and legacy compatibility.
+See [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md) for real RouterOS validation.
 
-When implementations disagree, MikroTik's official RouterOS API documentation is authoritative. Node.js official documentation is authoritative for runtime/socket behavior.
+## Architecture boundary
 
-## Status
+A consuming application may choose one or many connections. For example, BOZZ-CENTER will compose separate CONTROL, ACTIVE-LISTEN, and USER-LISTEN connections above this SDK for failure isolation. That topology is **not imposed by `@bozz/routeros`**.
 
-Pre-release architecture and protocol implementation. **Not production-ready yet.**
+## Normative references
 
-Before a stable release the project must pass strict TypeScript/CI, mock protocol tests, fragmentation/resource-limit tests, CHR and real RouterOS conformance, long-running listen tests, reconnect/reboot/network-loss tests, socket/tag/memory leak tests, and TLS validation tests.
+- MikroTik RouterOS API: https://manual.mikrotik.com/docs/developer-guides/api/
+- Node.js `net`: https://nodejs.org/api/net.html
+- Node.js `tls`: https://nodejs.org/api/tls.html
+- Node.js `events`: https://nodejs.org/api/events.html
+
+## License and upstream attribution
+
+Apache-2.0. See `LICENSE` and `NOTICE`.
