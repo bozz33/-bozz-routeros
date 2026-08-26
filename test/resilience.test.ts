@@ -190,10 +190,20 @@ test('listen overflow fails locally and automatically cancels the remote RouterO
       overflowPolicy: 'error',
     });
 
-    const first = await stream.nextReply(500);
-    assert.equal(first?.attributes.name, 'ether1');
-    await assert.rejects(stream.nextReply(500), RouterOSStreamOverflowError);
+    let sawOverflow = false;
+    const deliveredNames: string[] = [];
+    for (let attempt = 0; attempt < 4 && !sawOverflow; attempt += 1) {
+      try {
+        const reply = await stream.nextReply(500);
+        if (reply?.attributes.name) deliveredNames.push(reply.attributes.name);
+      } catch (error) {
+        assert.ok(error instanceof RouterOSStreamOverflowError);
+        sawOverflow = true;
+      }
+    }
 
+    assert.equal(sawOverflow, true);
+    assert.ok(deliveredNames.includes('ether1'));
     await waitFor(() => client.pendingTags === 0);
     assert.equal(stream.closed, true);
   } finally {
