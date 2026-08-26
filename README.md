@@ -1,44 +1,80 @@
 # @bozz/routeros
 
-Modern, protocol-correct RouterOS Binary API transport for Node.js/TypeScript.
+A modern, protocol-correct RouterOS Binary API SDK for Node.js and TypeScript.
 
-This repository is the protocol and transport foundation for BOZZ RouterOS integrations. It is intentionally independent from BOZZ-CENTER business logic.
+`@bozz/routeros` is intentionally generic. It does not know about BOZZ-CENTER, vouchers, tenants, Redis, accounting, or any application-specific workflow. BOZZ-CENTER is only one intended consumer.
 
 ## Design goals
 
-- RouterOS Binary API first, aligned with MikroTik's official protocol documentation.
+- RouterOS 7.x Binary API first, aligned with MikroTik's official protocol documentation.
 - Strict reply lifecycle for `!re`, `!empty`, `!trap`, `!done`, and `!fatal`.
 - Correct `.tag` multiplexing and `/cancel` lifecycle.
-- Long-lived `listen` streams with AsyncIterator and AbortSignal support.
-- Dedicated TCP/TLS transport built on official Node.js primitives.
-- No RouterOS reply, late tag, socket race, or empty result may crash the host process.
-- Read commands may be retried under explicit policy; writes are never blindly replayed.
-- No BOZZ business concepts (voucher, accounting, Redis, tenant) in the core package.
-- Conformance tests against RouterOS CHR and physical RouterOS devices before release.
+- Long-lived `listen` streams with bounded buffering, AsyncIterator, and AbortSignal support.
+- Native TCP/TLS transport built on official Node.js primitives.
+- TLS certificate verification enabled by default.
+- TCP keepalive and TCP_NODELAY for long-lived sockets.
+- Empty results, late tags, and orphan replies must never be misclassified as RouterOS outages.
+- Unknown raw commands remain usable; the SDK must not lag behind future RouterOS menus.
+- Reads and writes have different failure semantics. Writes are never blindly replayed after ambiguous acknowledgement loss.
+- No BOZZ business concepts in the core package.
+- Conformance tests against RouterOS CHR and real RouterOS devices before stable release.
 
-## Target package
+## Runtime
 
-```text
-@bozz/routeros
+Node.js `>=24.19.0`.
+
+The minimum is deliberate: Node 24.19 adds the keepalive controls used by the transport for `TCP_KEEPIDLE`, `TCP_KEEPINTVL`, and `TCP_KEEPCNT`.
+
+## Example
+
+```ts
+import { RouterOSClient } from '@bozz/routeros';
+
+const client = new RouterOSClient({
+  host: '192.168.88.1',
+  username: 'api-user',
+  password: 'secret',
+});
+
+await client.connect();
+
+const resources = await client.print('/system/resource', {
+  apiAttributes: {
+    '.proplist': ['uptime', 'cpu-load', 'version'],
+  },
+});
+
+const stream = await client.listen('/interface');
+for await (const reply of stream) {
+  if (reply.type === 're') console.log(reply.attributes);
+}
 ```
 
-## Planned layers
+Raw RouterOS access is intentional: callers can use new menus and commands without waiting for a package release. Typed helpers can be layered on top without restricting the protocol surface.
+
+## Layers
 
 ```text
 src/
 ├── codec/       # RouterOS word-length and sentence encoding/decoding
 ├── protocol/    # replies, tags, command state machines
-├── transport/   # TCP/TLS sockets and lifecycle
-├── client/      # execute/print/listen/cancel API
-├── supervisor/  # reconnect/backoff/health primitives
+├── transport/   # native TCP/TLS socket lifecycle
+├── client/      # login, execute, print, listen, cancel
+├── supervisor/  # reconnect/backoff/health primitives (next phase)
 ├── observability/
 └── errors/
 ```
 
-## Project status
+## Upstream base and references
 
-Architecture bootstrap in progress. No production use yet.
+The initial binary framing/streaming implementation is adapted from the Apache-2.0 `SourceRegistry/mikrotik-client` project and then hardened/refactored. The pinned upstream baseline is recorded in `NOTICE`.
 
-## Upstream research
+`@fibercom/routeros-api` 2.0.0 is used as a comparative functional/reference implementation for streaming, fragmented decoding, tagged concurrency, TLS, retries, and legacy compatibility.
 
-The implementation is informed by MikroTik RouterOS official API documentation, Node.js official `net`, `tls`, `events`, and abort APIs, and comparative study of modern open-source RouterOS clients. Any source-derived code incorporated later will retain the applicable license and attribution.
+When implementations disagree, MikroTik's official RouterOS API documentation is authoritative. Node.js official documentation is authoritative for runtime/socket behavior.
+
+## Status
+
+Pre-release architecture and protocol implementation. **Not production-ready yet.**
+
+Before a stable release the project must pass strict TypeScript/CI, mock protocol tests, fragmentation/resource-limit tests, CHR and real RouterOS conformance, long-running listen tests, reconnect/reboot/network-loss tests, socket/tag/memory leak tests, and TLS validation tests.
