@@ -4,6 +4,7 @@ import {
   RouterOSTimeoutError,
 } from '../errors.js';
 import type { RouterOSReply } from '../protocol/reply.js';
+import { addSafeAbortListener } from '../util/abort-listener.js';
 import { createDeferred, type Deferred } from '../util/deferred.js';
 import type { RouterOSStream, RouterOSStreamOverflowPolicy } from './types.js';
 
@@ -116,6 +117,7 @@ export class RouterOSStreamController implements RouterOSStream {
     const deferred = createDeferred<IteratorResult<RouterOSReply>>();
     let timer: NodeJS.Timeout | undefined;
     let waiter: Waiter | undefined;
+    let removeAbort: (() => void) | undefined;
 
     const removeWaiter = () => {
       if (!waiter) return;
@@ -125,7 +127,8 @@ export class RouterOSStreamController implements RouterOSStream {
 
     const cleanup = () => {
       if (timer) clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
+      removeAbort?.();
+      removeAbort = undefined;
     };
 
     const onAbort = () => {
@@ -148,8 +151,7 @@ export class RouterOSStreamController implements RouterOSStream {
       timer.unref?.();
     }
 
-    signal?.addEventListener('abort', onAbort, { once: true });
-    if (signal?.aborted) onAbort();
+    if (signal) removeAbort = addSafeAbortListener(signal, onAbort);
 
     const result = await deferred.promise;
     return result.done ? undefined : result.value;
