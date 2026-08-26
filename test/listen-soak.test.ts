@@ -21,9 +21,11 @@ async function closeServer(server: net.Server): Promise<void> {
   });
 }
 
-test('long-running listen consumes 20k events and cancels cleanly', async () => {
+test('long-running listen consumes 20k sustained events and cancels cleanly', async () => {
   const totalEvents = 20_000;
-  let activeTimer: NodeJS.Immediate | undefined;
+  const batchSize = 16;
+  const batchIntervalMs = 1;
+  let activeTimer: NodeJS.Timeout | undefined;
 
   const server = net.createServer((socket) => {
     const decoder = new SentenceDecoder();
@@ -31,10 +33,16 @@ test('long-running listen consumes 20k events and cancels cleanly', async () => 
     let sequence = 0;
     let cancelled = false;
 
+    const schedulePump = () => {
+      if (socket.destroyed || cancelled || !listenTag || sequence >= totalEvents) return;
+      activeTimer = setTimeout(pump, batchIntervalMs);
+    };
+
     const pump = () => {
       if (socket.destroyed || cancelled || !listenTag) return;
+
       const batch: Buffer[] = [];
-      for (let index = 0; index < 32 && sequence < totalEvents; index += 1) {
+      for (let index = 0; index < batchSize && sequence < totalEvents; index += 1) {
         batch.push(
           encodeSentence([
             '!re',
@@ -46,8 +54,20 @@ test('long-running listen consumes 20k events and cancels cleanly', async () => 
         );
         sequence += 1;
       }
-      if (batch.length > 0) socket.write(Buffer.concat(batch));
-      if (sequence < totalEvents) activeTimer = setImmediate(pump);
+
+      if (batch.length === 0) return;
+
+      // This soak test models a sustained event stream, not an unbounded burst.
+      // The dedicated overflow tests intentionally exercise queue exhaustion.
+      // Respect socket backpressure and also yield between batches so the
+      // consumer gets event-loop turns to drain its bounded queue.
+      const writable = socket.write(Buffer.concat(batch));
+      if (sequence >= totalEvents) return;
+      if (writable) {
+        schedulePump();
+      } else {
+        socket.once('drain', schedulePump);
+      }
     };
 
     socket.on('data', (chunk) => {
@@ -63,7 +83,7 @@ test('long-running listen consumes 20k events and cancels cleanly', async () => 
 
         if (command === '/interface/listen') {
           listenTag = tag;
-          activeTimer = setImmediate(pump);
+          schedulePump();
           continue;
         }
 
@@ -71,7 +91,7 @@ test('long-running listen consumes 20k events and cancels cleanly', async () => 
           const target = value(sentence, '=', 'tag');
           if (!target || target !== listenTag) continue;
           cancelled = true;
-          if (activeTimer) clearImmediate(activeTimer);
+          if (activeTimer) clearTimeout(activeTimer);
           socket.write(Buffer.concat([
             encodeSentence(['!trap', '=category=2', '=message=interrupted', `.tag=${target}`]),
             encodeSentence(['!done', `.tag=${tag}`]),
@@ -101,6 +121,7 @@ test('long-running listen consumes 20k events and cancels cleanly', async () => 
 
     await stream.cancel();
     assert.equal(stream.closed, true);
+    assert.equal(stream.queuedReplies, 0);
     assert.equal(client.pendingTags, 0);
     assert.equal(await stream.nextReply(), undefined);
   } finally {
