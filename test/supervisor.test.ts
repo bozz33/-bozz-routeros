@@ -3,10 +3,10 @@ import { EventEmitter, once } from 'node:events';
 import test from 'node:test';
 import type {
   RouterOSCommandOptions,
-  RouterOSCommandResult,
   RouterOSListenOptions,
   RouterOSStream,
 } from '../src/client/types.js';
+import type { RouterOSCommandResult } from '../src/protocol/reply.js';
 import {
   RouterOSConnectionSupervisor,
   calculateReconnectDelay,
