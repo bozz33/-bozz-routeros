@@ -25,16 +25,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function consume(stream, counters, state) {
+async function consume(stream, counters, state, label) {
   while (!state.stopping) {
     try {
       const reply = await stream.nextReply(1_000);
-      if (reply === undefined) return;
+      if (reply === undefined) {
+        if (!state.stopping) state.error = new Error(`${label} listen stream closed unexpectedly`);
+        return;
+      }
       countReply(counters, reply);
     } catch (error) {
       if (error instanceof RouterOSTimeoutError) continue;
       state.error = error;
-      throw error;
+      return;
     }
   }
 }
@@ -58,25 +61,21 @@ const resourcesBaseline = resourceCounts();
 try {
   await client.connect();
 
-  const [resource] = await Promise.all([
-    client.print('/system/resource', { attributes: { '.proplist': 'version,uptime' } }),
-  ]);
+  const resource = await client.print('/system/resource', {
+    attributes: { '.proplist': 'version,uptime' },
+  });
 
+  // Keep listen requests protocol-minimal; the soak consumes but never logs
+  // client payload fields.
   const [activeStream, userStream] = await Promise.all([
-    client.listen('/ip/hotspot/active', {
-      attributes: { '.proplist': '.id,user,uptime,session-time-left' },
-      maxQueuedReplies: 4_096,
-    }),
-    client.listen('/ip/hotspot/user', {
-      attributes: { '.proplist': '.id,name,uptime,limit-uptime,disabled' },
-      maxQueuedReplies: 4_096,
-    }),
+    client.listen('/ip/hotspot/active', { maxQueuedReplies: 4_096 }),
+    client.listen('/ip/hotspot/user', { maxQueuedReplies: 4_096 }),
   ]);
 
   runtime.start();
   const consumers = [
-    consume(activeStream, activeEvents, state),
-    consume(userStream, userEvents, state),
+    consume(activeStream, activeEvents, state, 'active'),
+    consume(userStream, userEvents, state, 'user'),
   ];
 
   safeReport({
@@ -125,7 +124,7 @@ try {
 
   state.stopping = true;
   await Promise.all([activeStream.cancel(), userStream.cancel()]);
-  await Promise.allSettled(consumers);
+  await Promise.all(consumers);
   await Promise.all([
     drainClosedStream(activeStream, activeEvents),
     drainClosedStream(userStream, userEvents),
