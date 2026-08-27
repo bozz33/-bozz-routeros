@@ -31,6 +31,7 @@ No stable npm package has been published yet.
 - strict `!re`, `!empty`, `!trap`, `!done`, and `!fatal` lifecycles;
 - concurrent `.tag` multiplexing;
 - bounded `listen` streams exposed as `AsyncIterable`;
+- raw reply strings preserved without boolean coercion;
 - correct dual-tag `/cancel` cleanup;
 - AbortSignal-safe cancellation and ambiguous-connection quarantine;
 - conservative ambiguous-write errors instead of unsafe automatic replay;

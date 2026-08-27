@@ -41,6 +41,12 @@ Methods:
 
 `kind` controls failure semantics: `read`, `write`, `control`, or conservative `auto`. It does not grant permissions or change the RouterOS command.
 
+Reply attribute values remain strings exactly as RouterOS sent them. The SDK
+does not coerce boolean-looking values: a menu/version may emit `true/false`
+while another context may use `yes/no`. Consumers that assign semantics must
+normalize explicitly. The certified RouterOS 7.24.1 HotSpot listener emits
+`.dead=true` when an ACTIVE occurrence disappears.
+
 `execute()` returns:
 
 ```ts

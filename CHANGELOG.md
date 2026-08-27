@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 - complete remaining RC2 real RouterOS certification gates;
 - finalize stable `0.1.0` package metadata and release evidence.
+- clarify that RouterOS 7.24.1 emits the raw HotSpot marker `.dead=true` and
+  that the SDK deliberately performs no boolean coercion.
 
 ## [0.1.0-rc.2] - 2026-08-27
 

@@ -69,7 +69,10 @@ SENT
 
 `listen()` returns a bounded `AsyncIterable` stream. Buffer overflow can either drop the oldest record or fail the stream, depending on policy. In error mode, remote `/cancel` cleanup is initiated automatically before the local stream is closed.
 
-The raw reply is exposed, including properties such as `=.dead=yes`; the SDK does not impose business semantics on those fields.
+The raw reply is exposed without boolean coercion. For example, RouterOS
+7.24.1 has been observed emitting `=.dead=true`, while earlier examples or
+other contexts may use `=.dead=yes`. The SDK preserves whichever string was on
+the wire and does not impose business semantics on that field.
 
 ## Strict cancellation
 

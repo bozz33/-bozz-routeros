@@ -35,7 +35,7 @@ Required before a stable production release:
 - [ ] current target RouterOS stable conformance passes;
 - [ ] real `!empty` behavior confirmed;
 - [ ] real concurrent tagged commands confirmed;
-- [ ] real `listen` and `.dead=yes` observed where applicable;
+- [ ] real `listen` and a raw `.dead` marker observed where applicable;
 - [ ] real `/cancel` dual-tag lifecycle confirmed;
 - [ ] API-SSL/TLS validated if used by the deployment;
 - [ ] actual network interruption/reconnect test passes;
@@ -50,7 +50,8 @@ These are application integration gates, not public SDK requirements:
 - [ ] TANDA RouterOS 7.24.1 conformance suite passes;
 - [ ] `/ip/hotspot/active/listen` real stream passes;
 - [ ] `/ip/hotspot/user/listen` real stream passes;
-- [ ] `.dead=yes` logout behavior confirmed;
+- [ ] logout marker confirmed (`.dead=true` on RouterOS 7.24.1; harness also
+      accepts `yes`) and correlated by exact RouterOS `.id`;
 - [ ] `!empty` no longer produces gateway HTTP 500;
 - [ ] active/remove does not create unknown/orphan-tag failures;
 - [ ] Gateway CONTROL / ACTIVE-LISTEN / USER-LISTEN topology validated;

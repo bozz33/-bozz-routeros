@@ -21,7 +21,8 @@ The normal test suite validates, among other things:
 - concurrent command multiplexing by `.tag`;
 - orphan/late replies not crashing the process;
 - bounded long-running streams;
-- `.dead=yes`-compatible raw reply handling;
+- raw `.dead` reply handling without coercion (`true` on the certified
+  RouterOS 7.24.1 target; `yes` remains a compatible observed/example value);
 - `/cancel` using a separate cancel tag and target `=tag`;
 - both cancel-tag and target-tag reaching terminal state;
 - caller AbortSignal cancellation not suppressing RouterOS-side cleanup;
