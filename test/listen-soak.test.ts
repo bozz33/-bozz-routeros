@@ -25,6 +25,8 @@ test('long-running listen consumes 20k sustained events and cancels cleanly', as
   const totalEvents = 20_000;
   const batchSize = 16;
   const batchIntervalMs = 1;
+  const maxInFlightEvents = 128;
+  let consumedEvents = 0;
   let activeTimer: NodeJS.Timeout | undefined;
 
   const server = net.createServer((socket) => {
@@ -41,8 +43,20 @@ test('long-running listen consumes 20k sustained events and cancels cleanly', as
     const pump = () => {
       if (socket.destroyed || cancelled || !listenTag) return;
 
+      // TCP write backpressure only limits the sender's kernel buffer; it does
+      // not prove that the AsyncIterable consumer has drained decoded replies.
+      // Keep an application-level window so this soak exercises sustained
+      // consumption deterministically instead of occasionally becoming the
+      // unbounded-burst overflow test covered elsewhere.
+      const availableWindow = maxInFlightEvents - (sequence - consumedEvents);
+      if (availableWindow <= 0) {
+        schedulePump();
+        return;
+      }
+
       const batch: Buffer[] = [];
-      for (let index = 0; index < batchSize && sequence < totalEvents; index += 1) {
+      const nextBatchSize = Math.min(batchSize, availableWindow);
+      for (let index = 0; index < nextBatchSize && sequence < totalEvents; index += 1) {
         batch.push(
           encodeSentence([
             '!re',
@@ -117,6 +131,7 @@ test('long-running listen consumes 20k sustained events and cancels cleanly', as
       const reply = await stream.nextReply(2_000);
       assert.equal(reply?.type, 're');
       assert.equal(reply?.attributes.sequence, String(expected));
+      consumedEvents += 1;
     }
 
     await stream.cancel();
