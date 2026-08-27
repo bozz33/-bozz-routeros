@@ -13,9 +13,9 @@ Updated: 2026-08-27
 - npm: `11.17.0`
 - package-lock SHA-256: `99e743ef9f97c10d487a45852e2e191d8b6d99d94265211d0b7c60ee51012311`
 - normalized tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5`
-- tested certification tooling SHA: `94d31d33b47b362c0e8755a97974d3315507871f`
-- GitHub Actions run: `33105010400` — PASS
-- certification image ID: `sha256:f440082bc201c32c69f2b30ced57f433d07c66b4b2ee6a2037d15b38c3c6c407`
+- tested certification tooling SHA: `9f831dedc47bc8879027ab9aa732e3b6266d8dfc`
+- GitHub Actions run: `33106691961` — PASS
+- certification image ID: `sha256:f35f864c460fbdab6549ef73797e2aeddd608567a989bf3a3c865a4d3ad71634`
 
 RC1 remains immutable. RC2 exists because the old synthetic listener producer could turn into an accidental unbounded burst: it failed 5/10 isolated repetitions and 3/10 combined stress repetitions on the pinned Node runtime. The corrected test passed 25/25 isolated repetitions and 10/10 combined stress repetitions before RC2 was frozen.
 
@@ -71,14 +71,14 @@ The evidence passes `certification/evidence/validate-soak.mjs` with the default 
 ## Pending release gates
 
 - [x] digest-pinned RC2 Docker gate on GitHub Actions
-- [ ] TANDA 24-hour ACTIVE/USERS soak
+- [ ] physical RouterOS 7.24.1 24-hour ACTIVE/USERS soak (personal LAB accepted)
 - [ ] CHR 7.24.1 conformance on a host exposing `/dev/kvm`
 - [ ] CHR client-network interruption and reconnect
 - [ ] CHR hypervisor reboot and reconnect
 - [ ] physical LAB `.dead=yes` with a dedicated test client
 - [ ] LAB-only `active/remove` with all destructive safeguards satisfied
 
-TANDA reboot is not required for the public SDK release and remains forbidden without a separately approved maintenance window. No BOZZ-CENTER production source or runtime is changed by this certification branch.
+The existing TANDA two-hour evidence remains valid. No additional TANDA action is part of this certification plan. The personal target must be RouterOS 7.24.1 and pass the physical 24-hour and client gates; otherwise certification stops pending a separate maintenance decision. TANDA reboot remains forbidden without a separately approved maintenance window. No BOZZ-CENTER production source or runtime is changed by this certification branch.
 
 ## Verdict
 

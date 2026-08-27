@@ -16,6 +16,8 @@ The certification process must fail if any of these invariants changes.
 
 Current evidence and remaining gates are tracked in [`STATUS.md`](STATUS.md).
 The host-by-host execution sequence is documented in [`RUNBOOK.md`](RUNBOOK.md).
+The complete copy/paste handoff for the external operator is in
+[`ASSISTANT-PROMPT.md`](ASSISTANT-PROMPT.md).
 
 ## Layers
 
@@ -23,7 +25,7 @@ The host-by-host execution sequence is documented in [`RUNBOOK.md`](RUNBOOK.md).
 2. `chr/` prepares a disposable RouterOS CHR QEMU/KVM VM and records image/runtime identity.
 3. The public real-RouterOS harness runs read-only conformance against CHR.
 4. Network interruption and CHR reboot validate real reconnect behavior.
-5. BOZZ-CENTER-specific TANDA tests are an external integration gate and do not alter the public SDK candidate.
+5. Physical HotSpot session events are certified on the operator-controlled personal Wi-Fi; the existing TANDA evidence is retained without new TANDA actions.
 
 ## Rules
 
