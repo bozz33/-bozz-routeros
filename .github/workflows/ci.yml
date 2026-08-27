@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'fix/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['24.19.0']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Verify runtime toolchain
+        run: |
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Stress and soak tests
+        run: npm run test:stress
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate npm package contents
+        run: npm pack --dry-run
+
+      - name: Build release tarball
+        id: pack
+        run: |
+          mkdir -p .artifacts
+          TARBALL="$(npm pack --pack-destination .artifacts --silent | tail -n 1)"
+          test -n "$TARBALL"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          sha256sum ".artifacts/$TARBALL"
+
+      - name: Install tarball in clean consumer project
+        run: node scripts/consumer-smoke.mjs ".artifacts/${{ steps.pack.outputs.tarball }}"
