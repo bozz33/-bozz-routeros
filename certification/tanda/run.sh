@@ -5,17 +5,8 @@ MODE="${1:-passive}"
 : "${ROUTEROS_HOST:?ROUTEROS_HOST is required}"
 : "${ROUTEROS_USERNAME:?ROUTEROS_USERNAME is required}"
 
-if [ -t 0 ]; then
-  echo 'ERROR: RouterOS password must be supplied on stdin.' >&2
-  exit 1
-fi
-
-IFS= read -r ROUTEROS_PASSWORD || true
-if [ -z "$ROUTEROS_PASSWORD" ]; then
-  echo 'ERROR: empty RouterOS password supplied.' >&2
-  exit 1
-fi
-export ROUTEROS_PASSWORD
+. certification/container/read-password.sh
+read_routeros_password
 trap 'unset ROUTEROS_PASSWORD' EXIT HUP INT TERM
 
 case "$MODE" in

@@ -60,6 +60,12 @@ Accept only a JSON result with `status=PASS`, the RC2 candidate SHA, zero pendin
 
 Create an evidence directory owned by the certification operator, then run the same immutable image for 86,400 seconds. Keep the foreground pipeline under the VPS service manager or an existing protected terminal multiplexer so an SSH disconnect cannot terminate it.
 
+For a detached container, mount a short-lived, mode-`0400` password file from a
+RAM-backed host directory and set `ROUTEROS_PASSWORD_FILE` to its container
+path. Remove the host pathname immediately after Docker has mounted it. Never
+put the secret in an environment variable, command argument, image, Git, or
+evidence file.
+
 ```bash
 install -d -m 0700 /var/lib/bozz-routeros-cert/rc2
 
