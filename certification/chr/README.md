@@ -36,6 +36,7 @@ Defaults:
 - VirtIO disk and NIC;
 - host `127.0.0.1:18728` forwarded to guest API port `8728`;
 - host `127.0.0.1:12222` forwarded to guest SSH port `22`;
+- a local QMP Unix socket under the disposable work directory;
 - console attached to the current terminal.
 
 ## 3. Initial LAB configuration
@@ -80,10 +81,15 @@ Provide the password only to the process running the harness; do not put it in t
 After baseline conformance passes:
 
 1. keep a supervisor/client probe running;
-2. interrupt only the certification client's network namespace for network-failure tests;
-3. restore connectivity and verify reconnect/generation behavior;
-4. reboot the CHR VM from the hypervisor/console;
-5. verify the client detects disconnect and recovers after RouterOS returns;
-6. recreate the overlay after destructive/chaos work.
+2. put `certification/chaos/tcp-cut-proxy.mjs` between the probe and CHR;
+3. send `SIGUSR1` to that dedicated proxy to close only its listener and TCP pairs, then let it restore itself;
+4. verify reconnect/generation behavior;
+5. reboot the CHR VM with `qmp-control.mjs ... reset` or from the VM console;
+6. verify the client detects disconnect and recovers after RouterOS returns;
+7. recreate the overlay after destructive/chaos work.
+
+QMP is available only through the local Unix socket. The helper supports
+`status`, `link-down`, `link-up`, and `reset`; it does not expose a TCP control
+port and never targets a physical router.
 
 The physical TANDA reboot is a separate BOZZ-CENTER integration gate and requires an explicit maintenance window.

@@ -6,6 +6,7 @@ WORKDIR="${1:-./.certification/chr-$CHR_VERSION}"
 OVERLAY="$WORKDIR/chr-$CHR_VERSION-overlay.qcow2"
 API_PORT="${CHR_HOST_API_PORT:-18728}"
 SSH_PORT="${CHR_HOST_SSH_PORT:-12222}"
+QMP_SOCKET="${CHR_QMP_SOCKET:-$WORKDIR/qmp.sock}"
 
 command -v qemu-system-x86_64 >/dev/null
 
@@ -20,10 +21,15 @@ if [ ! -f "$OVERLAY" ]; then
   exit 1
 fi
 
+# The socket belongs only to this disposable VM and is recreated for every
+# boot. QMP remains a local Unix socket; it is never exposed over TCP.
+rm -f "$QMP_SOCKET"
+
 cat <<EOF
 Starting disposable RouterOS CHR $CHR_VERSION
 Host API port: 127.0.0.1:$API_PORT -> guest:8728
 Host SSH port: 127.0.0.1:$SSH_PORT -> guest:22
+QMP socket: $QMP_SOCKET
 
 On first boot, use the CHR console to secure/configure the LAB VM.
 The base image remains read-only; all changes are confined to the qcow2 overlay.
@@ -37,6 +43,7 @@ exec qemu-system-x86_64 \
   -m 1024 \
   -drive "file=$OVERLAY,if=virtio,format=qcow2,cache=none" \
   -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$API_PORT-:8728,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22" \
-  -device virtio-net-pci,netdev=net0 \
+  -device virtio-net-pci,netdev=net0,id=nic0 \
+  -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
   -nographic \
   -no-reboot
