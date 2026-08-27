@@ -11,7 +11,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE", "NOTICE", "docs"],
+  "files": ["dist", "examples", "README.md", "LICENSE", "NOTICE", "docs"],
   "sideEffects": false,
   "engines": {
     "node": ">=24.19.0"
@@ -23,7 +23,9 @@
     "test": "node --import tsx --test \"test/*.test.ts\"",
     "test:stress": "node --import tsx --test test/tag-leak-stress.test.ts test/listen-soak.test.ts test/concurrency.test.ts",
     "test:conformance": "node --import tsx --test test/conformance/routeros.integration.test.ts",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm test && npm run test:stress && npm run build",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run check"
   },
   "keywords": [
     "mikrotik",
@@ -39,5 +41,16 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bozz33/-bozz-routeros.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bozz33/-bozz-routeros/issues"
+  },
+  "homepage": "https://github.com/bozz33/-bozz-routeros#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }
