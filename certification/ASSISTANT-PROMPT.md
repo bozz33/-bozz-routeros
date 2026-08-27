@@ -9,7 +9,7 @@ Terminer les gates externes de `@bozz/routeros` RC2 avec exactement :
 
 - dépôt : `https://github.com/bozz33/-bozz-routeros.git` ;
 - candidat SDK : `8a3cd500aa5013577ca1f8179c916dc7807cf392` ;
-- tooling à exécuter : `9f831dedc47bc8879027ab9aa732e3b6266d8dfc` ;
+- tooling à exécuter : `9c7e539b6e7ad565165905ab514b29d674479608` ;
 - Node : `v24.19.0` ;
 - npm : `11.17.0` ;
 - tarball normalisé SHA-256 : `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5` ;
@@ -18,7 +18,7 @@ Terminer les gates externes de `@bozz/routeros` RC2 avec exactement :
 Deux environnements strictement séparés doivent être utilisés :
 
 1. le VPS du HotSpot Wi-Fi personnel et son routeur physique pour
-   la conformance, le gate passif, le soak 24 h, `.dead=yes` et
+   la conformance, le gate passif, le soak 24 h, le marqueur `.dead` et
    `active/remove` ;
 2. un ordinateur Linux local avec `/dev/kvm` pour la VM CHR jetable ;
 
@@ -79,6 +79,8 @@ Conserver au minimum :
 - `physical-soak-24h.jsonl`, son inspection Docker et sa validation ;
 - `physical-dead-watch.jsonl` ;
 - `physical-active-remove.jsonl` ;
+- le diagnostic existant `FINDING-dead-attribute.md` et la capture
+  `raw-dead-wire-capture.jsonl`, avec leurs SHA-256 complets ;
 - les hashes archive/raw/overlay metadata CHR ;
 - `chr-conformance.tap`, `chr-network-reconnect.jsonl`,
   `chr-proxy.jsonl`, `chr-reboot-reconnect.jsonl` et les sorties QMP ;
@@ -91,23 +93,37 @@ Cloner dans un nouveau dossier qui n'est pas celui de l'ancien projet :
 ```bash
 git clone https://github.com/bozz33/-bozz-routeros.git bozz-routeros-cert-rc2
 cd bozz-routeros-cert-rc2
-git checkout --detach 9f831dedc47bc8879027ab9aa732e3b6266d8dfc
-test "$(git rev-parse HEAD)" = 9f831dedc47bc8879027ab9aa732e3b6266d8dfc
+git checkout --detach 9c7e539b6e7ad565165905ab514b29d674479608
+test "$(git rev-parse HEAD)" = 9c7e539b6e7ad565165905ab514b29d674479608
 
 docker build --pull --no-cache \
   --file certification/container/Dockerfile \
-  --tag bozz-routeros-cert:rc2-9f831ded \
+  --tag bozz-routeros-cert:rc2-9c7e539 \
   .
 
-docker image inspect bozz-routeros-cert:rc2-9f831ded \
+docker image inspect bozz-routeros-cert:rc2-9c7e539 \
   > /var/lib/bozz-routeros-cert/rc2/image-inspect.json
 
-docker run --rm --network none bozz-routeros-cert:rc2-9f831ded \
+docker run --rm --network none bozz-routeros-cert:rc2-9c7e539 \
   | tee /var/lib/bozz-routeros-cert/rc2/software-gate.log
 ```
 
 Le gate logiciel doit produire 47/47 tests génériques, 5/5 stress, un build,
 un package/consumer smoke et `status=PASS` avec le SHA candidat exact.
+
+### Reprise après le diagnostic `.dead=true`
+
+Le précédent tooling `9f831ded…` a correctement exécuté A, C et le soak D,
+car leurs critères de réussite ne dépendent pas du prédicat `.dead`. Si le
+conteneur 24 h est toujours continu, ne pas l'arrêter ni fabriquer un nouveau
+départ : conserver son ID/image et sa preuve brute. Son sous-compteur `dead`
+peut être sous-évalué, mais les compteurs `re`, tags, queues, diagnostics,
+durée et mesures mémoire restent les critères du soak et sont inchangés.
+
+En revanche, l'ancien E est uniquement un diagnostic `BLOCKED`, et F n'a pas
+été exécuté. Rebuilder obligatoirement l'image depuis `9c7e539…`, vérifier son
+gate logiciel, puis rejouer E et F. Ne jamais modifier le tooling dans le
+checkout opérateur et ne jamais présenter le diagnostic comme une preuve PASS.
 
 ## B. Préparation sûre du routeur physique personnel
 
@@ -165,7 +181,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/container/run-conformance.sh \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-conformance.tap
 unset CERT_PASSWORD
@@ -179,7 +195,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh passive \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-passive.jsonl
 unset CERT_PASSWORD
@@ -214,7 +230,7 @@ docker run -d --name bozz-routeros-cert-rc2-physical-soak24h \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_SOAK_SECONDS -e ROUTEROS_SOAK_SAMPLE_SECONDS \
   -e ROUTEROS_PASSWORD_FILE=/run/secrets/routeros-password \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh soak
 
 for attempt in $(seq 1 60); do
@@ -249,7 +265,7 @@ docker run --rm --network none \
   -e CERT_EXPECTED_CANDIDATE=8a3cd500aa5013577ca1f8179c916dc7807cf392 \
   -e CERT_EXPECTED_DURATION_SECONDS=86400 \
   -v /var/lib/bozz-routeros-cert/rc2/physical-soak-24h.jsonl:/evidence/soak.jsonl:ro \
-  --entrypoint node bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
   certification/evidence/validate-soak.mjs /evidence/soak.jsonl \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-soak-validation.json
 ```
@@ -258,7 +274,7 @@ Exiger `exit=0`, `oom=false`, au moins 1439 échantillons, 86 400 secondes,
 deux tags pendant le run, zéro tag/queue/diagnostic final et `status=PASS` du
 validateur. Conserver le conteneur arrêté jusqu'au verdict final.
 
-## E. `.dead=yes` avec le client Wi-Fi physique
+## E. Marqueur `.dead=true/yes` avec le client Wi-Fi physique
 
 Utiliser uniquement `BOZZ-RC2-LAB`. L'opérateur doit pouvoir fermer sa propre
 session. Le logout normal par la page HotSpot est préférable à une expiration.
@@ -273,15 +289,17 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_TEST_USER -e ROUTEROS_DEAD_TIMEOUT_MS \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh dead-watch \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-dead-watch.jsonl
 unset CERT_PASSWORD
 ```
 
 Quand le watcher l'indique, connecter si nécessaire le client physique avec ce
-compte, puis effectuer un logout HotSpot normal. Exiger un `.dead=yes` corrélé
-au `.id` exact, `status=PASS`, zéro pending tag et diagnostics propres.
+compte, puis effectuer un logout HotSpot normal. Sur RouterOS 7.24.1, la valeur
+observée sur le fil est `.dead=true`; le harness accepte également `yes` pour
+compatibilité. Exiger un marqueur corrélé au `.id` exact, la valeur brute dans
+le rapport, `status=PASS`, zéro pending tag et diagnostics propres.
 
 ## F. `active/remove` borné à la session personnelle
 
@@ -305,14 +323,15 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_TEST_USER -e ROUTEROS_ALLOW_ACTIVE_REMOVE \
   -e ROUTEROS_REMOVE_TIMEOUT_MS \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh active-remove \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-active-remove.jsonl
 unset CERT_PASSWORD
 ```
 
 Le harness doit refuser automatiquement zéro ou plusieurs sessions. Pour un
-PASS, il doit prouver : suppression du seul `.id` ACTIVE, `.dead=yes` exact,
+PASS, il doit prouver : suppression du seul `.id` ACTIVE, marqueur `.dead`
+corrélé (`true` ou `yes`) et valeur brute consignée,
 absence de session après l'action, compte HotSpot toujours présent et même
 `.id`, zéro pending tag et diagnostics propres. L'opérateur reconnecte ensuite
 le compte pour confirmer le fonctionnement, puis se déconnecte normalement.
@@ -373,7 +392,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/container/run-conformance.sh \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-conformance.tap
 unset CERT_PASSWORD
@@ -386,7 +405,7 @@ Lancer le proxy de coupure local devant le CHR :
 ```bash
 docker run -d --name bozz-routeros-cert-rc2-proxy --network host \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --entrypoint node bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
   certification/chaos/tcp-cut-proxy.mjs
 ```
 
@@ -400,7 +419,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_RECONNECT_TIMEOUT_MS=180000 \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh reconnect \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-network-reconnect.jsonl
 unset CERT_PASSWORD
@@ -436,7 +455,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_RECONNECT_TIMEOUT_MS=180000 \
-  --entrypoint sh bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
   certification/tanda/run.sh reconnect \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-reboot-reconnect.jsonl
 unset CERT_PASSWORD
@@ -450,7 +469,7 @@ export ROUTEROS_PORT=18728
 
 docker run --rm --network none \
   --mount type=bind,src="$(realpath "$CHR_WORKDIR")",dst=/chr \
-  --entrypoint node bozz-routeros-cert:rc2-9f831ded \
+  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
   certification/chr/qmp-control.mjs /chr/qmp.sock reset \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-qmp-reset.jsonl
 ```
@@ -466,7 +485,7 @@ Calculer les SHA-256 de toutes les preuves et produire un tableau contenant :
 - software/container ;
 - physique conformance/passif ;
 - physique soak 24 h ;
-- physique `.dead=yes` ;
+- physique marqueur `.dead=true/yes` ;
 - physique `active/remove` et compte préservé ;
 - CHR conformance ;
 - CHR coupure/reconnexion ;

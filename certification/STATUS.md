@@ -13,9 +13,9 @@ Updated: 2026-08-27
 - npm: `11.17.0`
 - package-lock SHA-256: `99e743ef9f97c10d487a45852e2e191d8b6d99d94265211d0b7c60ee51012311`
 - normalized tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5`
-- tested certification tooling SHA: `9f831dedc47bc8879027ab9aa732e3b6266d8dfc`
-- GitHub Actions run: `33106691961` — PASS
-- certification image ID: `sha256:f35f864c460fbdab6549ef73797e2aeddd608567a989bf3a3c865a4d3ad71634`
+- tested certification tooling SHA: `9c7e539b6e7ad565165905ab514b29d674479608`
+- GitHub Actions run: `33115786544` — PASS
+- certification image ID: `sha256:b0557222a7f3715da1b8aea3c734b1d70e56882a30c5350a7a855085891b1da1`
 
 RC1 remains immutable. RC2 exists because the old synthetic listener producer could turn into an accidental unbounded burst: it failed 5/10 isolated repetitions and 3/10 combined stress repetitions on the pinned Node runtime. The corrected test passed 25/25 isolated repetitions and 10/10 combined stress repetitions before RC2 was frozen.
 
@@ -58,6 +58,29 @@ TANDA `TANDAPHARMA`, RouterOS `7.24.1 (stable)`:
 
 The evidence passes `certification/evidence/validate-soak.mjs` with the default release thresholds.
 
+## Physical LAB dead-marker finding
+
+A diagnostic capture on the personal RouterOS 7.24.1 target observed the raw
+Binary API words:
+
+```text
+["!re",".tag=L2","=.id=*D3080A0A","=.dead=true"]
+```
+
+The SDK correctly exposed the raw `.dead` value and required no candidate
+change. Tooling SHA `9f831dedc47bc8879027ab9aa732e3b6266d8dfc`
+incorrectly required only `yes`, so E/F evidence from that tooling is rejected.
+Tooling SHA `9c7e539b6e7ad565165905ab514b29d674479608`
+centralizes the marker predicate, accepts exactly `true` or `yes`, records the
+raw value in E/F reports, and adds three helper tests. Its immutable container
+gate passed 6/6 certification tests, 47/47 SDK tests, and 5/5 stress tests.
+
+Existing A/C evidence and an uninterrupted D soak from tooling `9f831ded…`
+remain admissible because those gates do not assert the dead-marker value. The
+soak validator uses record counts, tag/queue cleanup, diagnostics, duration,
+and memory/resource slopes; the informational `dead` subcounter is not a PASS
+criterion. E and F must use the corrected tooling.
+
 ## Initial support claim
 
 - Node.js: `>=24.19.0`
@@ -75,7 +98,7 @@ The evidence passes `certification/evidence/validate-soak.mjs` with the default 
 - [ ] CHR 7.24.1 conformance on a host exposing `/dev/kvm`
 - [ ] CHR client-network interruption and reconnect
 - [ ] CHR hypervisor reboot and reconnect
-- [ ] physical LAB `.dead=yes` with a dedicated test client
+- [ ] physical LAB `.dead=true/yes` with a dedicated test client, rerun on tooling `9c7e539…`
 - [ ] LAB-only `active/remove` with all destructive safeguards satisfied
 
 The existing TANDA two-hour evidence remains valid. No additional TANDA action is part of this certification plan. The personal target must be RouterOS 7.24.1 and pass the physical 24-hour and client gates; otherwise certification stops pending a separate maintenance decision. TANDA reboot remains forbidden without a separately approved maintenance window. No BOZZ-CENTER production source or runtime is changed by this certification branch.

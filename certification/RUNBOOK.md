@@ -13,7 +13,7 @@ Public tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826
 | software/container | GitHub Actions or Docker host | no RouterOS | none |
 | physical target passive + 24 h soak | personal HotSpot VPS | RouterOS 7.24.1 | read/listen only |
 | CHR conformance/reconnect/reboot | KVM host exposing `/dev/kvm` | disposable CHR 7.24.1 | none |
-| physical `.dead=yes` | personal HotSpot VPS + physical client | dedicated LAB HotSpot user | LAB session only |
+| physical `.dead=true/yes` | personal HotSpot VPS + physical client | dedicated LAB HotSpot user | LAB session only |
 | physical `active/remove` | personal HotSpot VPS + physical client | exactly one named LAB session | disconnects LAB session only |
 
 The current ChatGPT workspace and the previously audited VPS without `/dev/kvm` cannot execute CHR. The existing TANDA two-hour evidence is retained, but no new TANDA action is part of this certification plan. The personal physical target must run RouterOS 7.24.1 and complete the 24-hour and client gates. If it does not run that exact version, certification stops pending a separately approved RouterOS maintenance decision.
@@ -25,7 +25,7 @@ On each Docker-capable certification host:
 ```bash
 git clone https://github.com/bozz33/-bozz-routeros.git /opt/bozz-routeros-cert-rc2
 cd /opt/bozz-routeros-cert-rc2
-git checkout --detach 9f831dedc47bc8879027ab9aa732e3b6266d8dfc
+git checkout --detach 9c7e539b6e7ad565165905ab514b29d674479608
 
 docker build --pull --no-cache \
   --file certification/container/Dockerfile \
@@ -126,7 +126,7 @@ For the reboot gate, repeat the probe and reboot only the disposable CHR VM from
 
 Use a dedicated account such as `BOZZ-RC2-LAB`. It must not belong to a customer.
 
-Start `.dead=yes` observation before logging the LAB device in and out:
+Start dead-marker observation before logging the LAB device in and out. RouterOS 7.24.1 emits `.dead=true`; the harness also accepts `yes` and records the raw value:
 
 ```bash
 export ROUTEROS_TEST_USER='BOZZ-RC2-LAB'
@@ -147,7 +147,7 @@ secret-command | docker run --rm -i --network host \
   certification/tanda/run.sh active-remove
 ```
 
-The result must prove the exact active `.id` emitted `.dead=yes`, disappeared from ACTIVE, and left the HotSpot user account intact.
+The result must prove the exact active `.id` emitted a `.dead=true/yes` marker, disappeared from ACTIVE, and left the HotSpot user account intact.
 
 ## 6. Stable release decision
 
