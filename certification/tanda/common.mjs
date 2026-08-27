@@ -66,9 +66,15 @@ export function newEventCounters() {
   return { re: 0, empty: 0, trap: 0, done: 0, fatal: 0, dead: 0 };
 }
 
+const ROUTEROS_DEAD_VALUES = new Set(['true', 'yes']);
+
+export function isRouterOSDeadReply(reply) {
+  return reply.type === 're' && ROUTEROS_DEAD_VALUES.has(reply.attributes?.['.dead']);
+}
+
 export function countReply(counters, reply) {
   counters[reply.type] += 1;
-  if (reply.type === 're' && reply.attributes['.dead'] === 'yes') counters.dead += 1;
+  if (isRouterOSDeadReply(reply)) counters.dead += 1;
 }
 
 export async function collectFor(stream, durationMs, counters) {

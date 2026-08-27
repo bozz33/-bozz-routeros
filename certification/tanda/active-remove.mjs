@@ -6,6 +6,7 @@ import {
   createRouterClient,
   drainClosedStream,
   intEnv,
+  isRouterOSDeadReply,
   newEventCounters,
   requiredEnv,
   safeReport,
@@ -53,7 +54,7 @@ try {
     (reply) =>
       reply.type === 're' &&
       reply.attributes['.id'] === activeId &&
-      reply.attributes['.dead'] === 'yes',
+      isRouterOSDeadReply(reply),
     activeEvents,
   );
 
@@ -64,7 +65,7 @@ try {
   });
 
   const deadReply = await deadPromise;
-  assert.ok(deadReply, `active/remove completed but .dead=yes was not observed for ${testUser}`);
+  assert.ok(deadReply, `active/remove completed but .dead=true/yes was not observed for ${testUser}`);
 
   const activeAfter = await client.print('/ip/hotspot/active', {
     attributes: { '.proplist': '.id,user' },
@@ -90,6 +91,7 @@ try {
     removedSingleLabSession: true,
     userAccountPreserved: true,
     deadObserved: true,
+    deadValue: deadReply.attributes['.dead'],
     activeEvents,
     diagnostics,
     pendingTags: client.pendingTags,

@@ -63,7 +63,7 @@ export ROUTEROS_CONCURRENCY=64
 export ROUTEROS_OBSERVE_MS=5000
 ```
 
-## 2. `.dead=yes` gate — LAB client only
+## 2. `.dead=true/yes` gate — LAB client only
 
 Set a dedicated LAB HotSpot username, then start the observer **before** logging that LAB client in/out:
 
@@ -72,7 +72,7 @@ export ROUTEROS_TEST_USER='BOZZ-RC2-LAB'
 secret-command | sh certification/tanda/run.sh dead-watch
 ```
 
-The harness correlates RouterOS `.id` values and requires a real `=.dead=yes` event for one active occurrence of that LAB user. It does not assume that the `.dead=yes` reply repeats the `user` field.
+The harness correlates RouterOS `.id` values and requires a real dead marker for one active occurrence of that LAB user. RouterOS 7.24.1 has been observed emitting `=.dead=true`; `=.dead=yes` is also accepted for compatibility with earlier observations/examples. The harness does not assume that the dead reply repeats the `user` field, and its report records the exact raw value received.
 
 Default deadline is 120 seconds. Override with `ROUTEROS_DEAD_TIMEOUT_MS` if needed.
 
@@ -91,7 +91,7 @@ export ROUTEROS_ALLOW_ACTIVE_REMOVE='I_UNDERSTAND_TEST_SESSION_ONLY'
 secret-command | sh certification/tanda/run.sh active-remove
 ```
 
-The harness starts `active/listen`, removes only that single active `.id`, requires the correlated `.dead=yes`, verifies the active occurrence disappeared, and verifies the HotSpot user account still exists with the same RouterOS `.id`.
+The harness starts `active/listen`, removes only that single active `.id`, requires the correlated `.dead=true/yes` marker, verifies the active occurrence disappeared, and verifies the HotSpot user account still exists with the same RouterOS `.id`.
 
 Never point this mode at a real customer/user session.
 
@@ -121,7 +121,7 @@ Every sample records only process/protocol health data:
 - RouterOS SDK runtime/event-loop diagnostics;
 - `pendingTags`;
 - queued replies per stream;
-- active/user event counts including `.dead=yes` counts;
+- active/user event counts including `.dead=true/yes` counts;
 - orphan/protocol/transport/disconnect counts.
 
 Evaluate memory and resource **slopes**, not only the final value. Final `pendingTags` and both stream queues must return to zero.

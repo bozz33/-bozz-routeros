@@ -7,6 +7,7 @@ import {
   createRouterClient,
   drainClosedStream,
   intEnv,
+  isRouterOSDeadReply,
   newEventCounters,
   requiredEnv,
   safeReport,
@@ -23,8 +24,9 @@ const userEvents = newEventCounters();
 try {
   await client.connect();
 
-  // `.dead=yes` replies are only guaranteed to identify the vanished item by
-  // `.id`; they do not have to repeat every prior field such as `user`.
+  // Dead replies are only guaranteed to identify the vanished item by `.id`;
+  // they do not have to repeat every prior field such as `user`. RouterOS
+  // 7.24.1 emits `.dead=true`; earlier observations/examples used `yes`.
   const activeIds = new Set(
     (await client.print('/ip/hotspot/active', {
       attributes: { '.proplist': '.id,user' },
@@ -40,7 +42,7 @@ try {
   ]);
 
   process.stderr.write(
-    `Watching RouterOS active stream for .dead=yes on LAB user ${testUser}. ` +
+    `Watching RouterOS active stream for a .dead=true/yes marker on LAB user ${testUser}. ` +
     `Log that LAB client in/out within ${timeoutMs}ms.\n`,
   );
 
@@ -53,17 +55,17 @@ try {
       const id = reply.attributes['.id'];
       if (!id) return false;
 
-      if (reply.attributes['.dead'] !== 'yes' && reply.attributes.user === testUser) {
+      if (!isRouterOSDeadReply(reply) && reply.attributes.user === testUser) {
         activeIds.add(id);
         return false;
       }
 
-      return reply.attributes['.dead'] === 'yes' && activeIds.has(id);
+      return isRouterOSDeadReply(reply) && activeIds.has(id);
     },
     activeEvents,
   );
 
-  assert.ok(deadReply, `No correlated .dead=yes event observed for LAB user ${testUser}`);
+  assert.ok(deadReply, `No correlated .dead=true/yes event observed for LAB user ${testUser}`);
 
   await Promise.all([activeStream.cancel(), userStream.cancel()]);
   await userCollector;
@@ -79,6 +81,7 @@ try {
     mode: 'tanda-dead-watch',
     testUser,
     deadObserved: true,
+    deadValue: deadReply.attributes['.dead'],
     timeoutMs,
     activeEvents,
     userEvents,

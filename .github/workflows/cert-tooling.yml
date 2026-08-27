@@ -50,10 +50,12 @@ jobs:
             find certification -type f -name "*.sh" -exec sh -n {} \;
           '
 
-      - name: Test certification evidence validator
+      - name: Test certification harness helpers and evidence validator
         run: |
           docker run --rm --network none --entrypoint node bozz-routeros-cert:rc2 \
-            --test certification/evidence/validate-soak.test.mjs
+            --test \
+            certification/evidence/validate-soak.test.mjs \
+            certification/tanda/common.test.mjs
 
       - name: Execute package gate without runtime network
         run: docker run --rm --network none bozz-routeros-cert:rc2
