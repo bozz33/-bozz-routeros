@@ -13,6 +13,9 @@ Updated: 2026-08-27
 - npm: `11.17.0`
 - package-lock SHA-256: `99e743ef9f97c10d487a45852e2e191d8b6d99d94265211d0b7c60ee51012311`
 - normalized tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5`
+- tested certification tooling SHA: `94d31d33b47b362c0e8755a97974d3315507871f`
+- GitHub Actions run: `33105010400` — PASS
+- certification image ID: `sha256:f440082bc201c32c69f2b30ced57f433d07c66b4b2ee6a2037d15b38c3c6c407`
 
 RC1 remains immutable. RC2 exists because the old synthetic listener producer could turn into an accidental unbounded burst: it failed 5/10 isolated repetitions and 3/10 combined stress repetitions on the pinned Node runtime. The corrected test passed 25/25 isolated repetitions and 10/10 combined stress repetitions before RC2 was frozen.
 
@@ -28,7 +31,8 @@ RC1 remains immutable. RC2 exists because the old synthetic listener producer co
 - package dry-run: PASS
 - clean consumer install/import: PASS
 - normalized tarball identity unchanged from RC1: PASS
-- digest-pinned Docker gate: pending on an operational Docker/CI runner
+- digest-pinned Docker gate: PASS
+- evidence-validator tests: 3/3 PASS
 
 ## Real RouterOS evidence inherited by identical package payload
 
@@ -66,7 +70,7 @@ The evidence passes `certification/evidence/validate-soak.mjs` with the default 
 
 ## Pending release gates
 
-- [ ] digest-pinned RC2 Docker gate on an operational runner
+- [x] digest-pinned RC2 Docker gate on GitHub Actions
 - [ ] TANDA 24-hour ACTIVE/USERS soak
 - [ ] CHR 7.24.1 conformance on a host exposing `/dev/kvm`
 - [ ] CHR client-network interruption and reconnect
@@ -79,7 +83,7 @@ TANDA reboot is not required for the public SDK release and remains forbidden wi
 ## Verdict
 
 - feature-complete SDK core: PASS
-- RC2 software gate: PASS locally; immutable Docker repetition pending
+- RC2 software gate: PASS locally and in the immutable Docker gate
 - TANDA conformance and 2-hour soak: PASS
 - full real certification: NOT YET COMPLETE
 - stable release / merge / npm publish: BLOCKED until every required gate above passes

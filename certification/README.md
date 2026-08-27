@@ -15,6 +15,7 @@ This directory is certification tooling only. It is intentionally developed on `
 The certification process must fail if any of these invariants changes.
 
 Current evidence and remaining gates are tracked in [`STATUS.md`](STATUS.md).
+The host-by-host execution sequence is documented in [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Layers
 
