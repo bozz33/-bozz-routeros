@@ -6,12 +6,24 @@ import {
   intEnv,
   safeReport,
 } from '../tanda/common.mjs';
+import {
+  parseRouterOSDurationSeconds,
+  validateRebootEvidence,
+} from './reboot-evidence.mjs';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 const timeoutMs = intEnv('ROUTEROS_RECONNECT_TIMEOUT_MS', 180_000, { min: 10_000, max: 900_000 });
+const expectation = process.env.ROUTEROS_RECONNECT_EXPECTATION ?? 'network';
+assert.ok(['network', 'reboot'].includes(expectation),
+  'ROUTEROS_RECONNECT_EXPECTATION must be network or reboot');
+const minimumInitialUptimeSeconds = intEnv(
+  'ROUTEROS_REBOOT_MIN_INITIAL_UPTIME_SECONDS',
+  30,
+  { min: 10, max: 3_600 },
+);
 const client = createRouterClient();
 const diagnostics = attachDiagnostics(client);
 const supervisor = new RouterOSConnectionSupervisor({
@@ -36,12 +48,35 @@ try {
   assert.equal(initial.state, 'online');
   assert.ok(initial.generation >= 1n);
 
+  let initialUptime;
+  let initialUptimeSeconds;
+  if (expectation === 'reboot') {
+    const resource = await client.print('/system/resource', {
+      attributes: { '.proplist': 'uptime' },
+    });
+    initialUptime = resource[0]?.uptime;
+    assert.equal(typeof initialUptime, 'string', 'Initial RouterOS uptime is unavailable');
+    initialUptimeSeconds = parseRouterOSDurationSeconds(initialUptime);
+    assert.ok(
+      initialUptimeSeconds >= minimumInitialUptimeSeconds,
+      `Initial RouterOS uptime ${initialUptimeSeconds}s is below the required ${minimumInitialUptimeSeconds}s`,
+    );
+  }
+
   safeReport({
     type: 'reconnect-probe-ready',
     candidate: '8a3cd500aa5013577ca1f8179c916dc7807cf392',
     generation: initial.generation.toString(),
     timeoutMs,
-    instruction: 'Interrupt only the certification client network path or reboot CHR now.',
+    expectation,
+    ...(initialUptime === undefined ? {} : {
+      initialUptime,
+      initialUptimeSeconds,
+      minimumInitialUptimeSeconds,
+    }),
+    instruction: expectation === 'reboot'
+      ? 'Reset only disposable CHR through QMP, then cut the dedicated certification proxy.'
+      : 'Interrupt only the certification client network path now.',
   });
 
   const deadline = Date.now() + timeoutMs;
@@ -66,6 +101,20 @@ try {
   });
   assert.ok(identity[0]?.name, 'Post-reconnect RouterOS command failed');
 
+  let rebootEvidence;
+  if (expectation === 'reboot') {
+    const resource = await client.print('/system/resource', {
+      attributes: { '.proplist': 'uptime' },
+    });
+    const recoveredUptime = resource[0]?.uptime;
+    assert.equal(typeof recoveredUptime, 'string', 'Recovered RouterOS uptime is unavailable');
+    rebootEvidence = validateRebootEvidence({
+      initialUptime,
+      recoveredUptime,
+      minimumInitialUptimeSeconds,
+    });
+  }
+
   safeReport({
     type: 'reconnect-probe-final',
     candidate: '8a3cd500aa5013577ca1f8179c916dc7807cf392',
@@ -75,6 +124,8 @@ try {
     disconnectEvents,
     onlineEvents,
     diagnostics,
+    expectation,
+    ...(rebootEvidence ?? {}),
     postReconnectRead: true,
     status: 'PASS',
   });

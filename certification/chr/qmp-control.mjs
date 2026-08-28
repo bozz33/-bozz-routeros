@@ -1,4 +1,9 @@
 import { createConnection } from 'node:net';
+import {
+  isQmpActionComplete,
+  observeQmpActionMessage,
+  validateQmpActionObservation,
+} from './qmp-protocol.mjs';
 
 const [socketPath, action] = process.argv.slice(2);
 
@@ -60,6 +65,9 @@ async function responseFor(readLine, predicate) {
 }
 
 const socket = createConnection({ path: socketPath });
+socket.setTimeout(10_000, () => {
+  socket.destroy(new Error('QMP action timed out after 10000ms'));
+});
 const readLine = lineReader(socket);
 
 try {
@@ -69,13 +77,18 @@ try {
   if (capabilities.error) throw new Error(`QMP capabilities failed: ${JSON.stringify(capabilities.error)}`);
 
   socket.write(`${JSON.stringify(requested)}\n`);
-  const result = await responseFor(readLine, (message) => message.return !== undefined || message.error);
-  if (result.error) throw new Error(`QMP ${action} failed: ${JSON.stringify(result.error)}`);
+  let observation = {};
+  while (!isQmpActionComplete(observation, action)) {
+    const message = await readLine();
+    observation = observeQmpActionMessage(observation, message);
+  }
+  const resetEvent = validateQmpActionObservation(observation, action);
 
   process.stdout.write(`${JSON.stringify({
     type: 'chr-qmp-action',
     action,
     qemu: greeting.QMP.version.qemu,
+    ...(resetEvent ? { resetEvent } : {}),
     status: 'PASS',
   })}\n`);
 } finally {

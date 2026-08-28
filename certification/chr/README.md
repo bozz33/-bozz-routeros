@@ -84,9 +84,24 @@ After baseline conformance passes:
 2. put `certification/chaos/tcp-cut-proxy.mjs` between the probe and CHR;
 3. send `SIGUSR1` to that dedicated proxy to close only its listener and TCP pairs, then let it restore itself;
 4. verify reconnect/generation behavior;
-5. reboot the CHR VM with `qmp-control.mjs ... reset` or from the VM console;
-6. verify the client detects disconnect and recovers after RouterOS returns;
-7. recreate the overlay after destructive/chaos work.
+5. for the reboot gate, run a fresh proxy and the probe with
+   `ROUTEROS_RECONNECT_EXPECTATION=reboot`;
+6. reset the CHR VM with `qmp-control.mjs ... reset`, then immediately send
+   `SIGUSR1` to the dedicated reboot proxy;
+7. verify both the transport reconnect invariants and a lower RouterOS uptime
+   after recovery;
+8. recreate the overlay after destructive/chaos work.
+
+QEMU user networking (`hostfwd`) terminates the host-side TCP connection in
+QEMU. A guest reset can therefore leave that host-side socket established even
+though RouterOS rebooted. The reboot gate deliberately requires two independent
+signals: QMP resets the guest and RouterOS uptime must decrease, while the
+dedicated proxy makes the SDK-visible transport loss deterministic. A proxy cut
+without an uptime decrease fails; an uptime decrease without a reconnect also
+fails.
+
+`run-qemu.sh` intentionally permits VM resets. Do not add `-no-reboot`: that
+option makes QEMU exit instead of resetting this disposable guest.
 
 QMP is available only through the local Unix socket. The helper supports
 `status`, `link-down`, `link-up`, and `reset`; it does not expose a TCP control

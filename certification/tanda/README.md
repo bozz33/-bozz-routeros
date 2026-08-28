@@ -135,7 +135,11 @@ export ROUTEROS_RECONNECT_TIMEOUT_MS=180000
 secret-command | sh certification/tanda/run.sh reconnect
 ```
 
-After the `reconnect-probe-ready` JSON line appears, interrupt only the certification client's network namespace or reboot the disposable CHR VM. The probe requires:
+After the `reconnect-probe-ready` JSON line appears, interrupt only the
+certification client's network path. For a disposable CHR reboot, use the
+documented proxy + QMP procedure and set
+`ROUTEROS_RECONNECT_EXPECTATION=reboot`; direct SLIRP `hostfwd` does not prove
+an SDK-visible disconnect. The probe requires:
 
 - a real disconnect event;
 - supervisor reconnect;

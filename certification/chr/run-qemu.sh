@@ -35,6 +35,8 @@ On first boot, use the CHR console to secure/configure the LAB VM.
 The base image remains read-only; all changes are confined to the qcow2 overlay.
 EOF
 
+# The reboot gate uses QMP system_reset and must keep the emulator alive.
+# Do not add -no-reboot: QEMU documents that option as "exit instead of rebooting".
 exec qemu-system-x86_64 \
   -name "bozz-routeros-chr-$CHR_VERSION" \
   -enable-kvm \
@@ -45,5 +47,4 @@ exec qemu-system-x86_64 \
   -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:$API_PORT-:8728,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22" \
   -device virtio-net-pci,netdev=net0,id=nic0 \
   -qmp "unix:$QMP_SOCKET,server=on,wait=off" \
-  -nographic \
-  -no-reboot
+  -nographic

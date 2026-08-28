@@ -54,6 +54,8 @@ jobs:
         run: |
           docker run --rm --network none --entrypoint node bozz-routeros-cert:rc2 \
             --test \
+            certification/chaos/reboot-evidence.test.mjs \
+            certification/chr/qmp-protocol.test.mjs \
             certification/evidence/validate-soak.test.mjs \
             certification/tanda/common.test.mjs
 
