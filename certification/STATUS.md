@@ -1,6 +1,6 @@
 # @bozz/routeros certification status
 
-Updated: 2026-08-27
+Updated: 2026-08-28
 
 ## Candidate RC2
 
@@ -13,9 +13,10 @@ Updated: 2026-08-27
 - npm: `11.17.0`
 - package-lock SHA-256: `99e743ef9f97c10d487a45852e2e191d8b6d99d94265211d0b7c60ee51012311`
 - normalized tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5`
-- tested certification tooling SHA: `9c7e539b6e7ad565165905ab514b29d674479608`
-- GitHub Actions run: `33115786544` — PASS
-- certification image ID: `sha256:b0557222a7f3715da1b8aea3c734b1d70e56882a30c5350a7a855085891b1da1`
+- dead-marker tooling SHA: `9c7e539b6e7ad565165905ab514b29d674479608`
+- CHR reboot-gate tooling SHA: `7de10fcc171d350fa31e0f18b9f41296afee1192`
+- latest GitHub Actions run: `33139359730` — PASS
+- latest certification image ID: `sha256:f2f4920799b16192fc45941bfcd1dfe822782a009fea2c62a811e11e19b26979`
 
 RC1 remains immutable. RC2 exists because the old synthetic listener producer could turn into an accidental unbounded burst: it failed 5/10 isolated repetitions and 3/10 combined stress repetitions on the pinned Node runtime. The corrected test passed 25/25 isolated repetitions and 10/10 combined stress repetitions before RC2 was frozen.
 
@@ -32,7 +33,7 @@ RC1 remains immutable. RC2 exists because the old synthetic listener producer co
 - clean consumer install/import: PASS
 - normalized tarball identity unchanged from RC1: PASS
 - digest-pinned Docker gate: PASS
-- evidence-validator tests: 3/3 PASS
+- certification helper/evidence tests: 12/12 PASS
 
 ## Real RouterOS evidence inherited by identical package payload
 
@@ -81,6 +82,27 @@ soak validator uses record counts, tag/queue cleanup, diagnostics, duration,
 and memory/resource slopes; the informational `dead` subcounter is not a PASS
 criterion. E and F must use the corrected tooling.
 
+## CHR evidence finding and repaired gate
+
+The committed diagnostic archive `certification/rc2.zip` has SHA-256
+`551ccff842badd422c60b319191a0c8c2c732fa0e1a23d796314a8ef439f61cf`.
+Its manifest validates all 14 evidence files. It records CHR conformance G and
+network reconnect H as technically PASS under tooling `9f831ded…`, but those
+two gates must be replayed under the latest tooling to remove the formal SHA
+deviation.
+
+Section I was correctly reported BLOCKED, not failed: `run-qemu.sh` used
+`-no-reboot`, while QEMU SLIRP `hostfwd` kept the host-side TCP connection
+established across the guest reset. The SDK was connected to a live QEMU TCP
+peer and therefore correctly emitted no disconnect.
+
+Tooling `7de10fcc…` removes `-no-reboot` and makes I a composed, fail-closed
+gate. QMP must report the host `RESET` event, recovered RouterOS uptime must be
+lower than initial uptime, the dedicated TCP proxy must cause a real client
+disconnect, the supervisor generation must advance, and a post-reconnect
+RouterOS command must succeed. Either a proxy cut without a reboot or a reboot
+without an SDK reconnect fails.
+
 ## Initial support claim
 
 - Node.js: `>=24.19.0`
@@ -95,11 +117,11 @@ criterion. E and F must use the corrected tooling.
 
 - [x] digest-pinned RC2 Docker gate on GitHub Actions
 - [ ] physical RouterOS 7.24.1 24-hour ACTIVE/USERS soak (personal LAB accepted)
-- [ ] CHR 7.24.1 conformance on a host exposing `/dev/kvm`
-- [ ] CHR client-network interruption and reconnect
-- [ ] CHR hypervisor reboot and reconnect
-- [ ] physical LAB `.dead=true/yes` with a dedicated test client, rerun on tooling `9c7e539…`
-- [ ] LAB-only `active/remove` with all destructive safeguards satisfied
+- [ ] CHR 7.24.1 conformance replay on tooling `7de10fcc…`
+- [ ] CHR client-network interruption replay on tooling `7de10fcc…`
+- [ ] CHR hypervisor reboot + forced client-path interruption on tooling `7de10fcc…`
+- [ ] import and audit the reported physical LAB `.dead=true/yes` PASS evidence
+- [ ] import and audit the reported LAB-only `active/remove` PASS evidence
 
 The existing TANDA two-hour evidence remains valid. No additional TANDA action is part of this certification plan. The personal target must be RouterOS 7.24.1 and pass the physical 24-hour and client gates; otherwise certification stops pending a separate maintenance decision. TANDA reboot remains forbidden without a separately approved maintenance window. No BOZZ-CENTER production source or runtime is changed by this certification branch.
 

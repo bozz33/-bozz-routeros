@@ -9,7 +9,7 @@ Terminer les gates externes de `@bozz/routeros` RC2 avec exactement :
 
 - dépôt : `https://github.com/bozz33/-bozz-routeros.git` ;
 - candidat SDK : `8a3cd500aa5013577ca1f8179c916dc7807cf392` ;
-- tooling à exécuter : `9c7e539b6e7ad565165905ab514b29d674479608` ;
+- tooling CHR à exécuter : `7de10fcc171d350fa31e0f18b9f41296afee1192` ;
 - Node : `v24.19.0` ;
 - npm : `11.17.0` ;
 - tarball normalisé SHA-256 : `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5` ;
@@ -74,7 +74,7 @@ absents. Calculer `sha256sum` pour chaque preuve brute.
 Conserver au minimum :
 
 - `host-inventory.txt` ;
-- `image-inspect.json` et `software-gate.log` ;
+- `image-inspect.json`, `software-gate.log` et `certification-helper-tests.tap` ;
 - `physical-conformance.tap` et `physical-passive.jsonl` ;
 - `physical-soak-24h.jsonl`, son inspection Docker et sa validation ;
 - `physical-dead-watch.jsonl` ;
@@ -83,7 +83,8 @@ Conserver au minimum :
   `raw-dead-wire-capture.jsonl`, avec leurs SHA-256 complets ;
 - les hashes archive/raw/overlay metadata CHR ;
 - `chr-conformance.tap`, `chr-network-reconnect.jsonl`,
-  `chr-proxy.jsonl`, `chr-reboot-reconnect.jsonl` et les sorties QMP ;
+  `chr-proxy.jsonl`, `chr-reboot-reconnect.jsonl`,
+  `chr-reboot-proxy.jsonl` et les sorties QMP avant/après ;
 - `FINAL-VERDICT.md` avec un tableau PASS/FAIL/BLOCKED.
 
 ## A. Image de certification sur chaque hôte Docker
@@ -93,23 +94,43 @@ Cloner dans un nouveau dossier qui n'est pas celui de l'ancien projet :
 ```bash
 git clone https://github.com/bozz33/-bozz-routeros.git bozz-routeros-cert-rc2
 cd bozz-routeros-cert-rc2
-git checkout --detach 9c7e539b6e7ad565165905ab514b29d674479608
-test "$(git rev-parse HEAD)" = 9c7e539b6e7ad565165905ab514b29d674479608
+git checkout --detach 7de10fcc171d350fa31e0f18b9f41296afee1192
+test "$(git rev-parse HEAD)" = 7de10fcc171d350fa31e0f18b9f41296afee1192
 
 docker build --pull --no-cache \
   --file certification/container/Dockerfile \
-  --tag bozz-routeros-cert:rc2-9c7e539 \
+  --tag bozz-routeros-cert:rc2-7de10fc \
   .
 
-docker image inspect bozz-routeros-cert:rc2-9c7e539 \
+docker image inspect bozz-routeros-cert:rc2-7de10fc \
   > /var/lib/bozz-routeros-cert/rc2/image-inspect.json
 
-docker run --rm --network none bozz-routeros-cert:rc2-9c7e539 \
+docker run --rm --network none bozz-routeros-cert:rc2-7de10fc \
   | tee /var/lib/bozz-routeros-cert/rc2/software-gate.log
+
+docker run --rm --network none \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
+  --test \
+  certification/chaos/reboot-evidence.test.mjs \
+  certification/chr/qmp-protocol.test.mjs \
+  certification/evidence/validate-soak.test.mjs \
+  certification/tanda/common.test.mjs \
+  | tee /var/lib/bozz-routeros-cert/rc2/certification-helper-tests.tap
 ```
 
 Le gate logiciel doit produire 47/47 tests génériques, 5/5 stress, un build,
-un package/consumer smoke et `status=PASS` avec le SHA candidat exact.
+un package/consumer smoke, 12/12 tests de tooling et `status=PASS` avec le SHA
+candidat exact.
+
+### Reprise des preuves CHR déjà collectées
+
+L'archive `certification/rc2.zip`, SHA-256
+`551ccff842badd422c60b319191a0c8c2c732fa0e1a23d796314a8ef439f61cf`,
+est une preuve diagnostique conservée. Son manifeste couvre 14/14 fichiers.
+Elle montre G/H techniquement PASS et I BLOCKED sous l'ancien tooling
+`9f831ded…`. G et H doivent être rejoués rapidement avec l'image
+`rc2-7de10fc` pour supprimer l'écart formel ; I doit être exécuté avec la
+nouvelle procédure composée ci-dessous. Ne modifier aucun fichier de l'archive.
 
 ### Reprise après le diagnostic `.dead=true`
 
@@ -121,9 +142,11 @@ peut être sous-évalué, mais les compteurs `re`, tags, queues, diagnostics,
 durée et mesures mémoire restent les critères du soak et sont inchangés.
 
 En revanche, l'ancien E est uniquement un diagnostic `BLOCKED`, et F n'a pas
-été exécuté. Rebuilder obligatoirement l'image depuis `9c7e539…`, vérifier son
-gate logiciel, puis rejouer E et F. Ne jamais modifier le tooling dans le
-checkout opérateur et ne jamais présenter le diagnostic comme une preuve PASS.
+été exécuté. Les PASS E/F obtenus avec `9c7e539…` restent recevables : le
+nouveau tooling `7de10fc…` ne modifie aucun des scripts exécutés par E/F. Ne
+répéter surtout pas `active/remove` uniquement à cause de la correction CHR.
+Ne jamais modifier le tooling dans le checkout opérateur et ne jamais présenter
+le diagnostic antérieur comme une preuve PASS.
 
 ## B. Préparation sûre du routeur physique personnel
 
@@ -181,7 +204,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/container/run-conformance.sh \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-conformance.tap
 unset CERT_PASSWORD
@@ -195,7 +218,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh passive \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-passive.jsonl
 unset CERT_PASSWORD
@@ -230,7 +253,7 @@ docker run -d --name bozz-routeros-cert-rc2-physical-soak24h \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_SOAK_SECONDS -e ROUTEROS_SOAK_SAMPLE_SECONDS \
   -e ROUTEROS_PASSWORD_FILE=/run/secrets/routeros-password \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh soak
 
 for attempt in $(seq 1 60); do
@@ -265,7 +288,7 @@ docker run --rm --network none \
   -e CERT_EXPECTED_CANDIDATE=8a3cd500aa5013577ca1f8179c916dc7807cf392 \
   -e CERT_EXPECTED_DURATION_SECONDS=86400 \
   -v /var/lib/bozz-routeros-cert/rc2/physical-soak-24h.jsonl:/evidence/soak.jsonl:ro \
-  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
   certification/evidence/validate-soak.mjs /evidence/soak.jsonl \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-soak-validation.json
 ```
@@ -289,7 +312,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_TEST_USER -e ROUTEROS_DEAD_TIMEOUT_MS \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh dead-watch \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-dead-watch.jsonl
 unset CERT_PASSWORD
@@ -323,7 +346,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_TEST_USER -e ROUTEROS_ALLOW_ACTIVE_REMOVE \
   -e ROUTEROS_REMOVE_TIMEOUT_MS \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh active-remove \
   | tee /var/lib/bozz-routeros-cert/rc2/physical-active-remove.jsonl
 unset CERT_PASSWORD
@@ -392,7 +415,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/container/run-conformance.sh \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-conformance.tap
 unset CERT_PASSWORD
@@ -405,7 +428,7 @@ Lancer le proxy de coupure local devant le CHR :
 ```bash
 docker run -d --name bozz-routeros-cert-rc2-proxy --network host \
   --read-only --cap-drop ALL --security-opt no-new-privileges \
-  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
   certification/chaos/tcp-cut-proxy.mjs
 ```
 
@@ -419,7 +442,7 @@ printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_RECONNECT_TIMEOUT_MS=180000 \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh reconnect \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-network-reconnect.jsonl
 unset CERT_PASSWORD
@@ -444,39 +467,86 @@ lecture post-reconnect, zéro orphan et zéro erreur protocole.
 
 ## I. Reboot de la VM CHR et reconnexion
 
-Relancer la probe dans un premier terminal, cette fois directement contre
-`127.0.0.1:18728` :
+Le forward SLIRP `127.0.0.1:18728` est terminé par QEMU et peut rester
+`ESTABLISHED` pendant un reset de l'invité. Un PASS exige donc deux preuves
+indépendantes dans le même gate :
+
+1. QMP émet un événement `RESET` hôte et l'uptime RouterOS diminue ;
+2. un proxy dédié rompt réellement le chemin TCP vu par le SDK, qui doit
+   augmenter sa génération puis réussir une nouvelle lecture.
+
+Le lancement CHR du tooling `7de10fc…` ne contient plus `-no-reboot`. Relancer
+la VM avec ce script si elle tournait encore sous l'ancien tooling. Attendre
+que RouterOS soit revenu depuis au moins 30 secondes, puis démarrer un nouveau
+proxy réservé au reboot :
 
 ```bash
-export ROUTEROS_PORT=18728
+docker run -d --name bozz-routeros-cert-rc2-reboot-proxy --network host \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -e CHAOS_LISTEN_PORT=28729 \
+  -e CHAOS_TARGET_PORT=18728 \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
+  certification/chaos/tcp-cut-proxy.mjs
+
+docker logs bozz-routeros-cert-rc2-reboot-proxy \
+  | grep '"status":"READY"'
+```
+
+Dans un premier terminal, lancer la probe en mode `reboot` contre ce proxy :
+
+```bash
+export ROUTEROS_PORT=28729
 read -r -s -p 'Mot de passe CHR conformance: ' CERT_PASSWORD; echo
 printf '%s\n' "$CERT_PASSWORD" | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_PORT -e ROUTEROS_USERNAME \
   -e ROUTEROS_RECONNECT_TIMEOUT_MS=180000 \
-  --entrypoint sh bozz-routeros-cert:rc2-9c7e539 \
+  -e ROUTEROS_RECONNECT_EXPECTATION=reboot \
+  -e ROUTEROS_REBOOT_MIN_INITIAL_UPTIME_SECONDS=30 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh reconnect \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-reboot-reconnect.jsonl
 unset CERT_PASSWORD
 ```
 
-Après `reconnect-probe-ready`, envoyer depuis un second terminal un reset
-uniquement au QMP local :
+Le JSON `reconnect-probe-ready` doit annoncer `expectation="reboot"`, l'uptime
+initial et sa valeur en secondes. Après cette ligne seulement, exécuter dans un
+second terminal le reset QMP puis la coupure du proxy, dans cet ordre :
 
 ```bash
-export ROUTEROS_PORT=18728
-
 docker run --rm --network none \
   --mount type=bind,src="$(realpath "$CHR_WORKDIR")",dst=/chr \
-  --entrypoint node bozz-routeros-cert:rc2-9c7e539 \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
   certification/chr/qmp-control.mjs /chr/qmp.sock reset \
   | tee /var/lib/bozz-routeros-cert/rc2/chr-qmp-reset.jsonl
+
+docker kill --signal USR1 bozz-routeros-cert-rc2-reboot-proxy
 ```
 
-La probe doit produire les mêmes invariants de reconnexion et une lecture
-RouterOS réussie après le reboot. Enregistrer sa sortie dans
-`chr-reboot-reconnect.jsonl`. Ce reset ne cible que la VM CHR jetable.
+Le helper QMP ne produit PASS qu'après un événement `RESET` avec
+`guest=false` et `reason="host-qmp-system-reset"`. La probe ne produit PASS que
+si elle observe aussi un disconnect réel, une génération supérieure, le retour
+online, une lecture post-reconnect et `recoveredUptimeSeconds` strictement
+inférieur à `initialUptimeSeconds`.
+
+Après le PASS, prouver que QEMU reste actif, puis collecter le proxy :
+
+```bash
+docker run --rm --network none \
+  --mount type=bind,src="$(realpath "$CHR_WORKDIR")",dst=/chr \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
+  certification/chr/qmp-control.mjs /chr/qmp.sock status \
+  | tee /var/lib/bozz-routeros-cert/rc2/chr-qmp-status-after.jsonl
+
+docker logs bozz-routeros-cert-rc2-reboot-proxy \
+  > /var/lib/bozz-routeros-cert/rc2/chr-reboot-proxy.jsonl
+docker stop bozz-routeros-cert-rc2-reboot-proxy
+```
+
+Une coupure proxy sans baisse d'uptime échoue. Un reset avec baisse d'uptime
+mais sans reconnexion SDK échoue aussi. Ce reset cible uniquement la VM CHR
+jetable.
 
 ## J. Verdict final
 

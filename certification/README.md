@@ -15,6 +15,8 @@ This directory is certification tooling only. It is intentionally developed on `
 The certification process must fail if any of these invariants changes.
 
 Current evidence and remaining gates are tracked in [`STATUS.md`](STATUS.md).
+The diagnosed CHR reboot-boundary defect and its corrected acceptance rule are
+recorded in [`CHR-REBOOT-FINDING.md`](CHR-REBOOT-FINDING.md).
 The host-by-host execution sequence is documented in [`RUNBOOK.md`](RUNBOOK.md).
 The complete copy/paste handoff for the external operator is in
 [`ASSISTANT-PROMPT.md`](ASSISTANT-PROMPT.md).

@@ -2,7 +2,7 @@
 
 Candidate: `8a3cd500aa5013577ca1f8179c916dc7807cf392`
 
-Certification tooling: branch `cert/rc2`
+Certification tooling: `7de10fcc171d350fa31e0f18b9f41296afee1192`
 
 Public tarball SHA-256: `343ce993318cd44e383162a25fdb0a0e7cf40bb0c0aaf3304d57826995e896c5`
 
@@ -25,14 +25,14 @@ On each Docker-capable certification host:
 ```bash
 git clone https://github.com/bozz33/-bozz-routeros.git /opt/bozz-routeros-cert-rc2
 cd /opt/bozz-routeros-cert-rc2
-git checkout --detach 9c7e539b6e7ad565165905ab514b29d674479608
+git checkout --detach 7de10fcc171d350fa31e0f18b9f41296afee1192
 
 docker build --pull --no-cache \
   --file certification/container/Dockerfile \
-  --tag bozz-routeros-cert:rc2 \
+  --tag bozz-routeros-cert:rc2-7de10fc \
   .
 
-docker run --rm --network none bozz-routeros-cert:rc2
+docker run --rm --network none bozz-routeros-cert:rc2-7de10fc
 ```
 
 Record the resulting image ID. Do not reuse an image whose ID was not recorded with the evidence.
@@ -50,7 +50,7 @@ secret-command | docker run --rm -i --network host \
   --read-only --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --cap-drop ALL --security-opt no-new-privileges \
   -e ROUTEROS_HOST -e ROUTEROS_USERNAME -e ROUTEROS_PORT \
-  --entrypoint sh bozz-routeros-cert:rc2 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh passive
 ```
 
@@ -81,7 +81,7 @@ secret-command | docker run --name bozz-routeros-cert-rc2-soak24h -i --network h
   --memory 256m --pids-limit 128 \
   -e ROUTEROS_HOST -e ROUTEROS_USERNAME -e ROUTEROS_PORT \
   -e ROUTEROS_SOAK_SECONDS -e ROUTEROS_SOAK_SAMPLE_SECONDS \
-  --entrypoint sh bozz-routeros-cert:rc2 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh soak \
   > /var/lib/bozz-routeros-cert/rc2/physical-soak-24h.jsonl
 ```
@@ -98,7 +98,7 @@ docker run --rm --network none \
   -e CERT_EXPECTED_CANDIDATE=8a3cd500aa5013577ca1f8179c916dc7807cf392 \
   -e CERT_EXPECTED_DURATION_SECONDS=86400 \
   -v /var/lib/bozz-routeros-cert/rc2/physical-soak-24h.jsonl:/evidence/soak.jsonl:ro \
-  --entrypoint node bozz-routeros-cert:rc2 \
+  --entrypoint node bozz-routeros-cert:rc2-7de10fc \
   certification/evidence/validate-soak.mjs /evidence/soak.jsonl
 ```
 
@@ -120,7 +120,13 @@ Secure the disposable VM from its console and create a read-only `api` account a
 
 For the network interruption gate, start `certification/tanda/run.sh reconnect` and interrupt only the dedicated CHR API path from the certification client. Restore it before the configured timeout and require a disconnect, a higher generation, a second online event, and a successful post-reconnect read.
 
-For the reboot gate, repeat the probe and reboot only the disposable CHR VM from its console/hypervisor. Never use TANDA for this gate.
+For the reboot gate, do not connect the probe directly to the QEMU SLIRP
+`hostfwd`. Start a fresh `tcp-cut-proxy`, point the probe at it with
+`ROUTEROS_RECONNECT_EXPECTATION=reboot`, issue `qmp-control.mjs ... reset`,
+then signal the proxy with `SIGUSR1`. PASS requires the host QMP `RESET` event,
+a lower RouterOS uptime after recovery, a real SDK disconnect, a higher
+supervisor generation, and a successful post-reconnect command. Never use
+TANDA for this gate.
 
 ## 5. Personal physical LAB gates
 
@@ -132,7 +138,7 @@ Start dead-marker observation before logging the LAB device in and out. RouterOS
 export ROUTEROS_TEST_USER='BOZZ-RC2-LAB'
 secret-command | docker run --rm -i --network host \
   -e ROUTEROS_HOST -e ROUTEROS_USERNAME -e ROUTEROS_PORT -e ROUTEROS_TEST_USER \
-  --entrypoint sh bozz-routeros-cert:rc2 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh dead-watch
 ```
 
@@ -143,7 +149,7 @@ export ROUTEROS_ALLOW_ACTIVE_REMOVE='I_UNDERSTAND_TEST_SESSION_ONLY'
 secret-command | docker run --rm -i --network host \
   -e ROUTEROS_HOST -e ROUTEROS_USERNAME -e ROUTEROS_PORT \
   -e ROUTEROS_TEST_USER -e ROUTEROS_ALLOW_ACTIVE_REMOVE \
-  --entrypoint sh bozz-routeros-cert:rc2 \
+  --entrypoint sh bozz-routeros-cert:rc2-7de10fc \
   certification/tanda/run.sh active-remove
 ```
 
