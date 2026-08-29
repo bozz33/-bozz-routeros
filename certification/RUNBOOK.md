@@ -104,6 +104,18 @@ docker run --rm --network none \
 
 Do not delete the stopped container or raw JSONL until the final certification report records their identities and hashes.
 
+Gate D requires one continuous run that reaches the configured 86,400 seconds.
+Do not concatenate, resume, or add the durations of separate attempts. If the
+client, container, host, or network path terminates early, preserve the partial
+JSONL and container inspection, classify D as FAIL/incomplete, record the
+failure cause separately, and start a new run from zero. Independent evidence
+of an external WAN failure can exonerate the SDK, but it cannot turn an
+incomplete run into PASS.
+
+A separate supervisor-based operational soak may test recovery from WAN cuts,
+but it is an integration gate and never substitutes for strict gate D unless
+the certification protocol is changed and committed before a new evidence run.
+
 ## 4. CHR 7.24.1
 
 Run only on a Linux host exposing `/dev/kvm` with QEMU tools installed.

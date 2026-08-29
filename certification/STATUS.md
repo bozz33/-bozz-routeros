@@ -1,6 +1,6 @@
 # @bozz/routeros certification status
 
-Updated: 2026-08-28
+Updated: 2026-08-29
 
 ## Candidate RC2
 
@@ -59,6 +59,27 @@ TANDA `TANDAPHARMA`, RouterOS `7.24.1 (stable)`:
 
 The evidence passes `certification/evidence/validate-soak.mjs` with the default release thresholds.
 
+## Physical LAB 24-hour soak attempts
+
+The first 24-hour attempt was reported as interrupted on 2026-08-29 at
+11:53:06Z after `elapsedSeconds=56161` (approximately 15 h 36), with 936
+samples and container exit code 1. The terminal error was `read ETIMEDOUT`.
+Because the run did not reach 86,400 seconds and did not produce an admissible
+clean final record, gate D is FAIL/incomplete even though the preceding resource
+and protocol diagnostics were clean.
+
+The operator also reported that an independent BOZZ-CENTER production sidecar,
+using another RouterOS library and connection pool, timed out against the same
+router in the same one-minute window. That correlation supports an external
+network-path interruption and does not demonstrate an SDK defect. It does not
+convert the incomplete run into PASS. The raw interrupted evidence, full hashes,
+container inspection, and sidecar extract remain pending import and audit.
+
+A fresh attempt was reported started at 2026-08-29 11:55:29Z with dead-marker
+tooling `9c7e539b6e7ad565165905ab514b29d674479608`. Its result remains pending.
+Runs must never be concatenated or resumed to manufacture a 24-hour window.
+
+
 ## Physical LAB dead-marker finding
 
 A diagnostic capture on the personal RouterOS 7.24.1 target observed the raw
@@ -76,9 +97,11 @@ centralizes the marker predicate, accepts exactly `true` or `yes`, records the
 raw value in E/F reports, and adds three helper tests. Its immutable container
 gate passed 6/6 certification tests, 47/47 SDK tests, and 5/5 stress tests.
 
-Existing A/C evidence and an uninterrupted D soak from tooling `9f831ded…`
-remain admissible because those gates do not assert the dead-marker value. The
-soak validator uses record counts, tag/queue cleanup, diagnostics, duration,
+Existing A/C evidence from tooling `9f831ded…` remains admissible because those
+gates do not assert the dead-marker value. A future uninterrupted D soak from
+that tooling would also be technically admissible for the same reason, but the
+reported first 24-hour attempt was interrupted and is therefore not admissible.
+The soak validator uses record counts, tag/queue cleanup, diagnostics, duration,
 and memory/resource slopes; the informational `dead` subcounter is not a PASS
 criterion. E and F must use the corrected tooling.
 
@@ -116,7 +139,7 @@ without an SDK reconnect fails.
 ## Pending release gates
 
 - [x] digest-pinned RC2 Docker gate on GitHub Actions
-- [ ] physical RouterOS 7.24.1 24-hour ACTIVE/USERS soak (personal LAB accepted)
+- [ ] physical RouterOS 7.24.1 24-hour ACTIVE/USERS soak (attempt 1 incomplete; fresh attempt reported in progress)
 - [ ] CHR 7.24.1 conformance replay on tooling `7de10fcc…`
 - [ ] CHR client-network interruption replay on tooling `7de10fcc…`
 - [ ] CHR hypervisor reboot + forced client-path interruption on tooling `7de10fcc…`

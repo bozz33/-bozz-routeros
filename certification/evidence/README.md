@@ -19,3 +19,15 @@ Default memory limits are deliberately explicit and can be made stricter by the 
 - final heap growth: 32 MiB.
 
 The output includes the SHA-256 of the evidence file. Preserve the raw JSONL outside Git and attach it to the immutable GitHub release/certification record.
+
+## Interrupted runs
+
+A run without exactly one terminal `soak-final`, a run ending before the
+configured duration, or a container with a non-zero exit code is
+FAIL/incomplete. Preserve it as diagnostic evidence, but never concatenate it
+with another run or accept it as release evidence. Independent logs may
+attribute the interruption to the WAN, host, or router; attribution does not
+change the strict gate result.
+
+Supervisor-based recovery soaks belong to application integration certification
+and do not replace this continuous-connection gate.

@@ -101,3 +101,19 @@ test('rejects incomplete terminal cleanup', () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /final pendingTags must be zero/u);
 });
+
+test('rejects an interrupted soak without a terminal record', () => {
+  const rows = fixtureRows();
+  rows.pop();
+  const result = runValidator(rows);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /exactly one final record/u);
+});
+
+test('rejects a clean final record that ends before the requested duration', () => {
+  const rows = fixtureRows();
+  rows.at(-1).elapsedSeconds = 59;
+  const result = runValidator(rows);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /ended before its requested duration/u);
+});

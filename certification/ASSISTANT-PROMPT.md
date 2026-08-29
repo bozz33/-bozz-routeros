@@ -297,6 +297,14 @@ Exiger `exit=0`, `oom=false`, au moins 1439 échantillons, 86 400 secondes,
 deux tags pendant le run, zéro tag/queue/diagnostic final et `status=PASS` du
 validateur. Conserver le conteneur arrêté jusqu'au verdict final.
 
+Le gate D exige une seule fenêtre continue. Ne concatène pas plusieurs tentatives
+et ne reprends pas un compteur après une reconnexion. En cas d'arrêt prématuré,
+archive le JSONL partiel, l'inspection du conteneur et les témoins réseau
+indépendants, classe D FAIL/incomplet, puis recommence depuis zéro. Une
+corrélation avec une panne WAN peut démontrer que le SDK n'est pas la cause,
+mais elle ne transforme jamais ce run incomplet en PASS. Un soak supervisé avec
+reconnexion est un gate d'intégration séparé et ne remplace pas D.
+
 ## E. Marqueur `.dead=true/yes` avec le client Wi-Fi physique
 
 Utiliser uniquement `BOZZ-RC2-LAB`. L'opérateur doit pouvoir fermer sa propre
