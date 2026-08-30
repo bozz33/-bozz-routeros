@@ -99,7 +99,7 @@ export function calculateReconnectDelay(
 }
 
 interface DisconnectWait {
-  readonly promise: Promise<RouterOSDisconnectedEvent>;
+  readonly promise: Promise<RouterOSDisconnectedEvent | undefined>;
   cancel(): void;
 }
 
@@ -255,13 +255,11 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
         this.#ready?.resolve();
       }
 
-      let disconnected: RouterOSDisconnectedEvent;
-      try {
-        disconnected = await disconnectWait.promise;
-      } catch (error) {
+      const disconnected = await disconnectWait.promise;
+      if (disconnected === undefined) {
         disconnectWait.cancel();
         if (signal.aborted) break;
-        throw error;
+        throw new RouterOSCancelledError('RouterOS supervisor wait cancelled unexpectedly');
       }
 
       this.#clearStableTimer();
@@ -295,7 +293,7 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
   }
 
   #createDisconnectWait(signal: AbortSignal): DisconnectWait {
-    const deferred = createDeferred<RouterOSDisconnectedEvent>();
+    const deferred = createDeferred<RouterOSDisconnectedEvent | undefined>();
     let active = true;
     let removeAbort: (() => void) | undefined;
 
@@ -312,7 +310,11 @@ export class RouterOSConnectionSupervisor extends EventEmitter {
     };
     const onAbort = () => {
       cleanup();
-      deferred.reject(new RouterOSCancelledError('RouterOS supervisor wait aborted'));
+      // Cancellation is an expected supervisor lifecycle transition. Resolve
+      // the pre-armed wait instead of rejecting it before connect() has
+      // completed and exposed an await site; otherwise Node reports an
+      // unhandled rejection when a starting agent is replaced or stopped.
+      deferred.resolve(undefined);
     };
 
     this.#client.on('disconnected', onDisconnected);

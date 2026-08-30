@@ -65,6 +65,28 @@ class FakeClient extends EventEmitter implements RouterOSSupervisedClient {
   }
 }
 
+class PendingConnectClient extends FakeClient {
+  private resolveConnectStarted!: () => void;
+
+  public readonly connectStarted = new Promise<void>((resolve) => {
+    this.resolveConnectStarted = resolve;
+  });
+
+  public override async connect(signal?: AbortSignal): Promise<void> {
+    this.connectCalls += 1;
+    this.resolveConnectStarted();
+
+    await new Promise<never>((_resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason);
+        return;
+      }
+
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  }
+}
+
 test('reconnect delay supports deterministic full and equal jitter', () => {
   const full = normalizeReconnectPolicy({
     initialDelayMs: 100,
@@ -159,6 +181,31 @@ test('stable connection resets exponential-backoff history', async () => {
     await once(supervisor, 'stable');
     assert.equal(supervisor.snapshot().consecutiveAttempts, 0);
   } finally {
+    await supervisor.stop();
+  }
+});
+
+test('stopping while the initial connect is pending does not leak an unhandled rejection', async () => {
+  const client = new PendingConnectClient();
+  const supervisor = new RouterOSConnectionSupervisor({ client });
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on('unhandledRejection', onUnhandled);
+
+  try {
+    const startRejection = assert.rejects(
+      supervisor.start(),
+      /RouterOS supervisor stopped before ready/,
+    );
+    await client.connectStarted;
+    await supervisor.stop();
+    await startRejection;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(unhandled, []);
+    assert.equal(supervisor.state, 'stopped');
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
     await supervisor.stop();
   }
 });
