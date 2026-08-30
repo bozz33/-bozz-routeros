@@ -40,7 +40,9 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
   readonly #options: RouterOSTransportOptions;
   #socket: RouterOSSocket | undefined;
   #connectPromise: Promise<void> | undefined;
+  #closePromise: Promise<void> | undefined;
   #connected = false;
+  #closing = false;
   #lastError: unknown;
   #writeTail: Promise<void> = Promise.resolve();
 
@@ -54,10 +56,14 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
   }
 
   public get connected(): boolean {
-    return this.#connected && this.#socket !== undefined && !this.#socket.destroyed;
+    return !this.#closing
+      && this.#connected
+      && this.#socket !== undefined
+      && !this.#socket.destroyed;
   }
 
   public async connect(signal?: AbortSignal): Promise<void> {
+    await this.#closePromise;
     if (this.connected) return;
     if (signal?.aborted) {
       throw new RouterOSCancelledError('RouterOS connection aborted before connect');
@@ -199,6 +205,7 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
       }
       const wasConnected = this.#connected;
       this.#connected = false;
+      this.#closing = false;
       if (wasConnected) {
         this.emit('disconnected', {
           at: Date.now(),
@@ -272,12 +279,18 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
   }
 
   public async close(): Promise<void> {
-    const socket = this.#socket;
-    this.#socket = undefined;
-    this.#connected = false;
-    if (!socket || socket.destroyed) return;
+    if (this.#closePromise) return this.#closePromise;
 
-    await new Promise<void>((resolve) => {
+    const socket = this.#socket;
+    if (!socket) {
+      this.#connected = false;
+      this.#closing = false;
+      return;
+    }
+
+    this.#closing = true;
+
+    const closePromise = new Promise<void>((resolve) => {
       let finished = false;
       const done = () => {
         if (finished) return;
@@ -296,5 +309,14 @@ export class SocketTransport extends EventEmitter implements RouterOSTransport {
       });
       socket.end();
     });
+
+    this.#closePromise = closePromise.finally(() => {
+      if (this.#socket === socket) this.#socket = undefined;
+      this.#connected = false;
+      this.#closing = false;
+      this.#closePromise = undefined;
+    });
+
+    return this.#closePromise;
   }
 }

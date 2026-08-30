@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import net from 'node:net';
 import test from 'node:test';
 import { SocketTransport, resolveTlsServername } from '../src/index.js';
@@ -53,6 +54,32 @@ test('physical socket writes are serialized while callers may enqueue concurrent
     ]);
     await allReceived;
     assert.deepEqual(received, [1, 2, 3, 4, 5, 6]);
+  } finally {
+    await transport.close();
+    await closeServer(server);
+  }
+});
+
+test('explicit close emits disconnected and allows a clean reconnect', async () => {
+  const server = net.createServer();
+  const port = await listenServer(server);
+  const transport = new SocketTransport({ host: '127.0.0.1', port });
+
+  try {
+    await transport.connect();
+    const firstDisconnect = once(transport, 'disconnected');
+
+    await transport.close();
+    await firstDisconnect;
+
+    assert.equal(transport.connected, false);
+
+    await transport.connect();
+    assert.equal(transport.connected, true);
+
+    const secondDisconnect = once(transport, 'disconnected');
+    await transport.close();
+    await secondDisconnect;
   } finally {
     await transport.close();
     await closeServer(server);
